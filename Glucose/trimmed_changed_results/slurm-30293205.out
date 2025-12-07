@@ -1,0 +1,96 @@
+Starting trimming for all samples
+Trimming SRR1166442...
+TrimmomaticSE: Started with arguments:
+ -phred33 /scratch/grp/msc_appbio/Group8_ABCC/Glucose/SRR1166442.fastq /scratch/grp/msc_appbio/Group8_ABCC/Glucose/trimmed_changed_results/SRR1166442_trimmed.fastq HEADCROP:4 CROP:35 LEADING:5 TRAILING:5 SLIDINGWINDOW:4:20 MINLEN:25
+Automatically using 2 threads
+Input Reads: 40585197 Surviving: 37214642 (91.70%) Dropped: 3370555 (8.30%)
+TrimmomaticSE: Completed successfully
+SRR1166442 complete.
+Trimming SRR1166443...
+TrimmomaticSE: Started with arguments:
+ -phred33 /scratch/grp/msc_appbio/Group8_ABCC/Glucose/SRR1166443.fastq /scratch/grp/msc_appbio/Group8_ABCC/Glucose/trimmed_changed_results/SRR1166443_trimmed.fastq HEADCROP:4 CROP:38 LEADING:5 TRAILING:5 SLIDINGWINDOW:4:20 MINLEN:25
+Automatically using 2 threads
+Input Reads: 44937781 Surviving: 41168645 (91.61%) Dropped: 3769136 (8.39%)
+TrimmomaticSE: Completed successfully
+SRR1166443 complete.
+Trimming SRR1166444...
+TrimmomaticSE: Started with arguments:
+ -phred33 /scratch/grp/msc_appbio/Group8_ABCC/Glucose/SRR1166444.fastq /scratch/grp/msc_appbio/Group8_ABCC/Glucose/trimmed_changed_results/SRR1166444_trimmed.fastq HEADCROP:4 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:20 MINLEN:30
+Automatically using 2 threads
+Input Reads: 34778661 Surviving: 32619263 (93.79%) Dropped: 2159398 (6.21%)
+TrimmomaticSE: Completed successfully
+SRR1166444 complete
+All trimming complete! Running FastQC on trimmed reads...
+null
+null
+null
+Started analysis of SRR1166442_trimmed.fastq
+Started analysis of SRR1166443_trimmed.fastq
+Started analysis of SRR1166444_trimmed.fastq
+Approx 5% complete for SRR1166444_trimmed.fastq
+Approx 5% complete for SRR1166443_trimmed.fastq
+Approx 5% complete for SRR1166442_trimmed.fastq
+Approx 10% complete for SRR1166442_trimmed.fastq
+Approx 10% complete for SRR1166444_trimmed.fastq
+Approx 10% complete for SRR1166443_trimmed.fastq
+Approx 15% complete for SRR1166442_trimmed.fastq
+Approx 15% complete for SRR1166444_trimmed.fastq
+Approx 15% complete for SRR1166443_trimmed.fastq
+Approx 20% complete for SRR1166442_trimmed.fastq
+Approx 20% complete for SRR1166444_trimmed.fastq
+Approx 20% complete for SRR1166443_trimmed.fastq
+Approx 25% complete for SRR1166444_trimmed.fastq
+Approx 25% complete for SRR1166442_trimmed.fastq
+Approx 25% complete for SRR1166443_trimmed.fastq
+Approx 30% complete for SRR1166442_trimmed.fastq
+Approx 30% complete for SRR1166444_trimmed.fastq
+Approx 30% complete for SRR1166443_trimmed.fastq
+Approx 35% complete for SRR1166442_trimmed.fastq
+Approx 35% complete for SRR1166444_trimmed.fastq
+Approx 35% complete for SRR1166443_trimmed.fastq
+Approx 40% complete for SRR1166442_trimmed.fastq
+Approx 40% complete for SRR1166444_trimmed.fastq
+Approx 40% complete for SRR1166443_trimmed.fastq
+Approx 45% complete for SRR1166442_trimmed.fastq
+Approx 45% complete for SRR1166444_trimmed.fastq
+Approx 45% complete for SRR1166443_trimmed.fastq
+Approx 50% complete for SRR1166442_trimmed.fastq
+Approx 50% complete for SRR1166444_trimmed.fastq
+Approx 55% complete for SRR1166442_trimmed.fastq
+Approx 50% complete for SRR1166443_trimmed.fastq
+Approx 55% complete for SRR1166444_trimmed.fastq
+Approx 60% complete for SRR1166442_trimmed.fastq
+Approx 55% complete for SRR1166443_trimmed.fastq
+Approx 60% complete for SRR1166444_trimmed.fastq
+Approx 65% complete for SRR1166442_trimmed.fastq
+Approx 60% complete for SRR1166443_trimmed.fastq
+Approx 65% complete for SRR1166444_trimmed.fastq
+Approx 70% complete for SRR1166442_trimmed.fastq
+Approx 65% complete for SRR1166443_trimmed.fastq
+Approx 70% complete for SRR1166444_trimmed.fastq
+Approx 75% complete for SRR1166442_trimmed.fastq
+Approx 70% complete for SRR1166443_trimmed.fastq
+Approx 75% complete for SRR1166444_trimmed.fastq
+Approx 80% complete for SRR1166442_trimmed.fastq
+Approx 75% complete for SRR1166443_trimmed.fastq
+Approx 80% complete for SRR1166444_trimmed.fastq
+Approx 85% complete for SRR1166442_trimmed.fastq
+Approx 80% complete for SRR1166443_trimmed.fastq
+Approx 85% complete for SRR1166444_trimmed.fastq
+Approx 90% complete for SRR1166442_trimmed.fastq
+Approx 85% complete for SRR1166443_trimmed.fastq
+Approx 90% complete for SRR1166444_trimmed.fastq
+Approx 95% complete for SRR1166442_trimmed.fastq
+Approx 90% complete for SRR1166443_trimmed.fastq
+Approx 95% complete for SRR1166444_trimmed.fastq
+Analysis complete for SRR1166442_trimmed.fastq
+Approx 95% complete for SRR1166443_trimmed.fastq
+Analysis complete for SRR1166444_trimmed.fastq
+Analysis complete for SRR1166443_trimmed.fastq
+==========================================
+Trimming Summary:
+SRR1166442: Trimmed first 4bp, kept bp 5-35 (~31bp reads)
+SRR1166443: Trimmed first 4bp, kept bp 5-35 (~31bp reads)
+SRR1166444: Trimmed first 4bp, light quality filtering (~46bp reads)
+==========================================
+Check FastQC results in: /scratch/grp/msc_appbio/Group8_ABCC/Glucose/fastqc_post_changed
