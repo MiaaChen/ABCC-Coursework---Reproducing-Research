@@ -1,0 +1,34 @@
+-----------------------------------
+Aligning SRR1166445_trimmed.fastq ...
+41501841 reads; of these:
+  41501841 (100.00%) were unpaired; of these:
+    1465575 (3.53%) aligned 0 times
+    34261349 (82.55%) aligned exactly 1 time
+    5774917 (13.91%) aligned >1 times
+96.47% overall alignment rate
+Bowtie2 alignment finished for SRR1166445_trimmed.fastq
+[bam_sort_core] merging from 2 files and 4 in-memory blocks...
+Done → /scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/alignment_results/SRR1166445_sorted.bam
+-----------------------------------
+Aligning SRR1166446_trimmed.fastq ...
+34815097 reads; of these:
+  34815097 (100.00%) were unpaired; of these:
+    960043 (2.76%) aligned 0 times
+    29003438 (83.31%) aligned exactly 1 time
+    4851616 (13.94%) aligned >1 times
+97.24% overall alignment rate
+Bowtie2 alignment finished for SRR1166446_trimmed.fastq
+[bam_sort_core] merging from 2 files and 4 in-memory blocks...
+Done → /scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/alignment_results/SRR1166446_sorted.bam
+-----------------------------------
+Aligning SRR1166447_trimmed.fastq ...
+32270905 reads; of these:
+  32270905 (100.00%) were unpaired; of these:
+    1017695 (3.15%) aligned 0 times
+    26554903 (82.29%) aligned exactly 1 time
+    4698307 (14.56%) aligned >1 times
+96.85% overall alignment rate
+Bowtie2 alignment finished for SRR1166447_trimmed.fastq
+[bam_sort_core] merging from 2 files and 4 in-memory blocks...
+Done → /scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/alignment_results/SRR1166447_sorted.bam
+All done!
