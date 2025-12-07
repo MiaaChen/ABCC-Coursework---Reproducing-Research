@@ -1,0 +1,94 @@
+==========================================
+Processing SRR1166445...
+TrimmomaticSE: Started with arguments:
+ -phred33 /scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/SRR1166445.fastq /scratch/grp/msc_appbio/Group8_ABCC/Cellobiosetrimmed_results/SRR1166445_trimmed.fastq HEADCROP:4 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:20 MINLEN:30
+Automatically using 2 threads
+Input Reads: 45543917 Surviving: 41157964 (90.37%) Dropped: 4385953 (9.63%)
+TrimmomaticSE: Completed successfully
+SRR1166445 trimming complete: /scratch/grp/msc_appbio/Group8_ABCC/Cellobiosetrimmed_results/SRR1166445_trimmed.fastq
+==========================================
+Processing SRR1166446...
+TrimmomaticSE: Started with arguments:
+ -phred33 /scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/SRR1166446.fastq /scratch/grp/msc_appbio/Group8_ABCC/Cellobiosetrimmed_results/SRR1166446_trimmed.fastq HEADCROP:4 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:20 MINLEN:30
+Automatically using 2 threads
+Input Reads: 38223389 Surviving: 34521544 (90.32%) Dropped: 3701845 (9.68%)
+TrimmomaticSE: Completed successfully
+SRR1166446 trimming complete: /scratch/grp/msc_appbio/Group8_ABCC/Cellobiosetrimmed_results/SRR1166446_trimmed.fastq
+==========================================
+Processing SRR1166447...
+TrimmomaticSE: Started with arguments:
+ -phred33 /scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/SRR1166447.fastq /scratch/grp/msc_appbio/Group8_ABCC/Cellobiosetrimmed_results/SRR1166447_trimmed.fastq HEADCROP:4 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:20 MINLEN:30
+Automatically using 2 threads
+Input Reads: 34542268 Surviving: 32270905 (93.42%) Dropped: 2271363 (6.58%)
+TrimmomaticSE: Completed successfully
+SRR1166447 trimming complete: /scratch/grp/msc_appbio/Group8_ABCC/Cellobiosetrimmed_results/SRR1166447_trimmed.fastq
+==========================================
+Running FastQC on trimmed reads...
+null
+null
+null
+Started analysis of SRR1166445_trimmed.fastq
+Started analysis of SRR1166446_trimmed.fastq
+Started analysis of SRR1166447_trimmed.fastq
+Approx 5% complete for SRR1166446_trimmed.fastq
+Approx 5% complete for SRR1166447_trimmed.fastq
+Approx 5% complete for SRR1166445_trimmed.fastq
+Approx 10% complete for SRR1166446_trimmed.fastq
+Approx 10% complete for SRR1166447_trimmed.fastq
+Approx 10% complete for SRR1166445_trimmed.fastq
+Approx 15% complete for SRR1166447_trimmed.fastq
+Approx 15% complete for SRR1166446_trimmed.fastq
+Approx 20% complete for SRR1166447_trimmed.fastq
+Approx 15% complete for SRR1166445_trimmed.fastq
+Approx 20% complete for SRR1166446_trimmed.fastq
+Approx 25% complete for SRR1166447_trimmed.fastq
+Approx 25% complete for SRR1166446_trimmed.fastq
+Approx 20% complete for SRR1166445_trimmed.fastq
+Approx 30% complete for SRR1166447_trimmed.fastq
+Approx 30% complete for SRR1166446_trimmed.fastq
+Approx 25% complete for SRR1166445_trimmed.fastq
+Approx 35% complete for SRR1166447_trimmed.fastq
+Approx 35% complete for SRR1166446_trimmed.fastq
+Approx 40% complete for SRR1166447_trimmed.fastq
+Approx 30% complete for SRR1166445_trimmed.fastq
+Approx 40% complete for SRR1166446_trimmed.fastq
+Approx 45% complete for SRR1166447_trimmed.fastq
+Approx 35% complete for SRR1166445_trimmed.fastq
+Approx 45% complete for SRR1166446_trimmed.fastq
+Approx 50% complete for SRR1166447_trimmed.fastq
+Approx 50% complete for SRR1166446_trimmed.fastq
+Approx 40% complete for SRR1166445_trimmed.fastq
+Approx 55% complete for SRR1166447_trimmed.fastq
+Approx 55% complete for SRR1166446_trimmed.fastq
+Approx 60% complete for SRR1166447_trimmed.fastq
+Approx 45% complete for SRR1166445_trimmed.fastq
+Approx 60% complete for SRR1166446_trimmed.fastq
+Approx 65% complete for SRR1166447_trimmed.fastq
+Approx 50% complete for SRR1166445_trimmed.fastq
+Approx 65% complete for SRR1166446_trimmed.fastq
+Approx 70% complete for SRR1166447_trimmed.fastq
+Approx 55% complete for SRR1166445_trimmed.fastq
+Approx 70% complete for SRR1166446_trimmed.fastq
+Approx 75% complete for SRR1166447_trimmed.fastq
+Approx 80% complete for SRR1166447_trimmed.fastq
+Approx 75% complete for SRR1166446_trimmed.fastq
+Approx 60% complete for SRR1166445_trimmed.fastq
+Approx 85% complete for SRR1166447_trimmed.fastq
+Approx 80% complete for SRR1166446_trimmed.fastq
+Approx 65% complete for SRR1166445_trimmed.fastq
+Approx 90% complete for SRR1166447_trimmed.fastq
+Approx 85% complete for SRR1166446_trimmed.fastq
+Approx 70% complete for SRR1166445_trimmed.fastq
+Approx 95% complete for SRR1166447_trimmed.fastq
+Approx 90% complete for SRR1166446_trimmed.fastq
+Analysis complete for SRR1166447_trimmed.fastq
+Approx 75% complete for SRR1166445_trimmed.fastq
+Approx 95% complete for SRR1166446_trimmed.fastq
+Approx 80% complete for SRR1166445_trimmed.fastq
+Analysis complete for SRR1166446_trimmed.fastq
+Approx 85% complete for SRR1166445_trimmed.fastq
+Approx 90% complete for SRR1166445_trimmed.fastq
+Approx 95% complete for SRR1166445_trimmed.fastq
+Analysis complete for SRR1166445_trimmed.fastq
+All trimming and FastQC complete!
+Check FastQC results in: /scratch/grp/msc_appbio/Group8_ABCC/Cellobiosefastqc_post
