@@ -1,0 +1,7 @@
+CDT-1	0
+GH1-1	0
+__no_feature	32585113
+__ambiguous	0
+__too_low_aQual	3690631
+__not_aligned	938898
+__alignment_not_unique	0
