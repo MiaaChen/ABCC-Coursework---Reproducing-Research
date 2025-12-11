@@ -1,0 +1,1286 @@
+---
+title: "ABCC_Coursework"
+format: html
+editor: visual
+---
+
+# Group Project ABCC
+
+------------------------------------------------------------------------
+
+## Obtaining Raw Data
+
+### Downloading Raw Sequencing Files
+
+```{bash}
+#make directory to downoad FASTQ files into
+mkdir /scratch/grp/msc_appbio/Group8_ABCC
+
+#downloading raw sequencing files from NCBI Expression Omnibus (accession no.GSE54825)
+wget ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR116/003/SRR1166443/SRR1166443.fastq.gz 
+#repeated for each of six FASTQ files: SRR1166442, SRR1166443, SRR116644, SRR1166445, SRR1166446, SRR1166447
+
+#unzipped all the files
+gzip -d SRR1166447.fastq.gz 
+
+#organised sequencing files based on their conditions
+mkdir Glucose
+mkdir Cellobiose
+```
+
+### Downloading Reference Genome
+
+Downloaded from <https://www.yeastgenome.org/>
+
+```{bash}
+wget http://sgd-archive.yeastgenome.org/sequence/strains/BY4742/BY4742_Stanford_2014_JRIR00000000/BY4742_Stanford_2014_JRIR00000000.fsa.gz
+
+```
+
+For the insertion sequences (gh1-1 & cdt-1); get onto several website on ncbi then copy and paste onto txt files.
+
+gh1-1: <https://www.ncbi.nlm.nih.gov/nuccore/NC_026503.1?report=fasta&from=2730966&to=2733380&strand=true>
+
+cdt-1: <https://www.ncbi.nlm.nih.gov/nuccore/NC_026501.1?report=fasta&from=7121829&to=7125021&strand=true>
+
+```{bash}
+nano gh1-1.txt
+nano cdt-1.txt
+```
+
+Right now, the example of the txt files. (need to remove the carriage returns, tabs, and space from the sequence part)
+
+```{bash}
+#keep the first line unchanged, and remove the newlines, carriage retuns, tab, and space from the rest.
+(head -n 1 gh1-1.txt && tail -n +2 gh1-1.txt | tr -d '\n\r\t ') > gh1-1_clean.txt
+( head -n 1 gh1-1.txt && tail -n +2 gh1-1.txt | tr -d '\n\r\t ' ) > cdt-1_clean.txt
+```
+
+Turn the txt files into fasta file (cause the reference genome use .fsa, in this case, will stay as same as reference genome).The txt files are already in fasta formate (has header line starting with '\>' follwed by sequence data, therefore can directly rename or copy it to convert the file). To keep all be recorded, will use copy.
+
+```{bash}
+cp gh1-1_clean.txt gh1-1.fsa
+cp cdt-1_clean.txt cdt-1.fsa
+```
+
+### Creating Custom Reference:
+
+```{bash}
+cat BY4742_Toronto_2012.fsa gh1-1.fsa cdt-1.fsa > combined_reference.fsa
+```
+
+After running this command, an error occur -- When combining the files, the cdt-1 won't add in a new line, it just added at the last genome code of the gh1-1 sequence, that's because gh1-1.fsa doesn't end with a new line. Need to add a new line for combing.
+
+```{bash}
+echo "" >> gh1-1.fsa 
+```
+
+Then combine all three files again.
+
+```{bash}
+cat BY4742_Toronto_2012.fsa gh1-1.fsa cdt-1.fsa > combined_reference.fsa
+# Can use this to check the combination 
+grep "^>" combined_reference.fasta
+# Use this to check the size 
+grep -v "^>" combined_reference.fasta | tr -d '\n' | wc -c
+# 12,147,068
+```
+
+## Create annotation file
+
+The annotation file of reference genome is downloaded from the same website as the reference genome fastq file. Here need to create the annotation for both gh1-1 and cdt-1.
+
+Annotation file (.gff or .gtf) is tab delimited text files, that describe the locations and structures of genes and otehr genomic features. The reason for making it, is when analysing the sequences data, need to tell the software that 1. where genes are located on each chromosome/sequence. 2. What parts are exon, introns, CDS (coding sequences). 3. Gene names and IDs. Without an annotation file, the aligner won't knwo that what sequences contain genes, and some of the tools like HTSeq and featureCounts won't be able to count reads mapping to these genes. There has 9 tab-separated columns: Seqname, Source, feature, start, end, score, trand, frame, and attributes. To do this:
+
+First, need to calculate the length of sequences
+
+```{bash}
+GH1_LEN=$(grep -v "^>" gh1-1.fsa | tr -d '\n'|wc -c)
+CDT_LEN=$(grep -v "^>" cdt-1.fsa | tr -d '\n'|wc -c)
+
+# Check the length before make the annotation 
+echo "GH1-1 length: $GH1_LEN” #gh1-1 length: 2415
+echo "cdt-1 length: $CDT_LEN” #cdt-1 length: 3193
+
+# Create the GFF file:
+Create the GFF file:
+cat > transgenes.gff << EOF
+synthetic_gh1-1	manual	gene	1	$GH1_LEN	.	+	.	gene_id "GH1-1"; gene_name "gh1-1";
+synthetic_gh1-1	manual	transcript	1	$GH1_LEN	.	+	.	gene_id "GH1-1"; transcript_id "GH1-1_mRNA";
+synthetic_gh1-1	manual	exon	1	$GH1_LEN	.	+	.	gene_id "GH1-1"; transcript_id "GH1-1_mRNA";
+synthetic_cdt-1	manual	gene	1	$CDT_LEN	.	+	.	gene_id "CDT-1"; gene_name "cdt-1";
+synthetic_cdt-1	manual	transcript	1	$CDT_LEN	.	+	.	gene_id "CDT-1"; transcript_id "CDT-1_mRNA";
+synthetic_cdt-1	manual	exon	1	$CDT_LEN	.	+	.	gene_id "CDT-1"; transcript_id "CDT-1_mRNA";
+EOF
+```
+
+After making the annotation file of the insertion genome, combine the insertion genome annotation and reference genome annotation.
+
+```{bash}
+cat BY4742_Toronto_2012_annotation.gff transgenes.gff > combined_reference_annotation.gff
+```
+
+There has a problem -- when checking the tail of the combined annotation file, there has some sequence information before gh1-1 and cdt-1. That’s because there has some sequence at the end of the reference one. Therefore need to remove fasta part in reference.
+
+```{bash}
+awk '/^##FASTA/ {exit} {print}' BY4742_Toronto_2012_annotation.gff > no_fasta_ref.gff
+```
+
+Then combine the files again.
+
+```{bash}
+cat no_fasta_ref.gff transgenes.gff > combined_reference_annotation.gff 
+```
+
+Then we have a whole annotation GFF file for all sequences.
+
+------------------------------------------------------------------------
+
+## Quality Control (QC)
+
+```{bash}
+#!/bin/bash
+module load fastqc
+mkdir -p fastqc_results
+
+for file in *.fastq; do
+    if [[ -f "$file" ]]; then
+        echo "Running FastQC on $file"
+        fastqc "$file" -o fastqc_results -t 4
+    fi
+done 
+```
+
+### Assess Read Quality
+
+-   SRR1166442:
+
+    Sequence length: 50, total sequences: 40,585,197
+
+    Quality score at read end: \[orange/red\]  trim first 4, and last 36 onwards…
+
+    Adapters detected: \[No\]
+
+    Any overrepresented sequences: \[No\]
+
+-   SRR1166443:
+
+    Sequence length: 50, total sequences: 44,937,781
+
+    Quality score at read end: \[orange/red\]  trim first 3, and last 39 onwards…
+
+    Adapters detected: \[No\]
+
+    Any overrepresented sequences: \[No\]
+
+-   SRR1166444:
+
+    Sequence length: 50, total sequences: 34,778,661
+
+    Quality score at read end:\[Good\] 
+
+    Adapters detected: \[No\]
+
+    Any overrepresented sequences: \[No\]
+
+-   SRR1166445: 
+
+    Sequence length: 50, total sequences: 45,543,917
+
+    Quality score at read end: \[orange/red\]  trim first 4, and last 36 onwards…
+
+    Adapters detected: \[No\]
+
+    Any overrepresented sequences: \[No\]
+
+-   SRR1166446: 
+
+    Sequence length: 50, total sequences: 38,223,389
+
+    Quality score at read end: \[orange/red\]  trim first 4, and last 36 onwards…
+
+    Adapters detected: \[No\]
+
+    Any overrepresented sequences: \[No\]
+
+-   SRR1166447: 
+
+    Sequence length: 50, total sequences: 34,542,268
+
+    Quality score at read end: \[Good\] 
+
+    Adapters detected: \[No\]
+
+    Any overrepresented sequences: \[No\]
+
+### Trim and Filter Reads
+
+At first we trimmed by: 1. Remove first 4 bases. 2. Remove bases from the start of the read until quality greater or equal to three. 3. Remove bases from the end of the read until the quality greater or equal to three. 4. cut the reads when the average drops below Q20. 5. If the read is shorter than 30 bp, drop the read. After trimmed the sequences, we made another fastqc test to check the quality after trimming is as good as we want.
+
+```{bash}
+#!/bin/bash
+module load trimmomatic 
+module load fastqc
+
+# Set directories
+INPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose           # Change to where your FASTQ files are
+OUTPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiosetrimmed_results
+FASTQC_POST=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiosefastqc_post
+
+# Create necessary directories
+mkdir -p "$OUTPUT_DIR"
+mkdir -p "$FASTQC_POST"
+
+# List of samples
+SAMPLES=("SRR1166445" "SRR1166446" "SRR1166447")
+
+# Loop through samples
+for SAMPLE in "${SAMPLES[@]}"; do
+    INPUT_FILE="$INPUT_DIR/${SAMPLE}.fastq"
+    OUTPUT_FILE="$OUTPUT_DIR/${SAMPLE}_trimmed.fastq"
+
+    echo "=========================================="
+    echo "Processing $SAMPLE..."
+
+    # Check if input exists and is readable
+    if [[ ! -r "$INPUT_FILE" ]]; then
+        echo "ERROR: Input file $INPUT_FILE not found or not readable. Skipping $SAMPLE."
+        continue
+    fi
+
+    # Run Trimmomatic SE
+    trimmomatic SE -phred33 \
+        "$INPUT_FILE" \
+        "$OUTPUT_FILE" \
+        # The trimming rules
+        HEADCROP:4 \
+        LEADING:3 \
+        TRAILING:3 \
+        SLIDINGWINDOW:4:20 \
+        MINLEN:30
+
+    # Check if trimming succeeded
+    if [[ -f "$OUTPUT_FILE" ]]; then
+        echo "$SAMPLE trimming complete: $OUTPUT_FILE"
+    else
+        echo "ERROR: Trimming failed for $SAMPLE"
+    fi
+done
+
+echo "=========================================="
+echo "Running FastQC on trimmed reads..."
+fastqc "$OUTPUT_DIR"/*_trimmed.fastq -o "$FASTQC_POST" -t 3
+
+echo "All trimming and FastQC complete!"
+echo "Check FastQC results in: $FASTQC_POST"
+```
+
+Then we check the fastqc_post result, still have some in red region.
+
+-   SRR1166442: Still has a peak went down to red region.
+
+<!-- -->
+
+-   SRR1166446: Still has a peak went down to red region.
+
+Therefore, we looked into the first fastqc result again, and decided to trim the sequences separetely with different rules.
+
+SRR1166442:
+
+1.  Remove first 4 bases.
+
+2.  Remove bases after 35.
+
+3.  Remove bases from the start of a read if their quality score is below five.
+
+4.  Remove bases from the end of a read if their quality score is below five.
+
+5.  If the average quality in the window drop below twenty, it trims the read from that point onward.
+
+6.  Drop reads shorter than 25 bases after trimming.
+
+-   SRR1166443:
+
+1.  Remove first 4 bases.
+2.  Remove bases after 38.
+3.  Remove bases from the start of a read if their quality score is below five.
+4.  Remove bases from the end of a read if their quality score is below five.
+5.  If the average quality in the window drop below twenty, it trims the read from that point onward.
+6.  Drop reads shorter than 25 bases after trimming.
+
+-   SRR1166444:
+
+1.  Remove first 4 bases.
+2.  Remove bases from the start of a read if their quality score is below three.
+3.  Remove bases from the end of a read if their quality score is below three.
+4.  If the average quality in the window drop below twenty, it trims the read from that point onward.
+5.  Drop reads shorter than 30 bases after trimming.
+
+```{bash}
+#!/bin/bash
+
+module load trimmomatic
+module load fastqc
+
+# Set directories
+INPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Glucose
+OUTPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Glucose/trimmed_changed_results
+FASTQC_POST=/scratch/grp/msc_appbio/Group8_ABCC/Glucose/fastqc_post_changed
+
+mkdir -p "$OUTPUT_DIR"
+mkdir -p "$FASTQC_POST"
+
+echo "Starting trimming for all samples"
+
+###############################################
+# SRR1166442
+###############################################
+echo "Trimming SRR1166442..."
+trimmomatic SE -phred33 \
+$INPUT_DIR/SRR1166442.fastq \
+$OUTPUT_DIR/SRR1166442_trimmed.fastq \
+HEADCROP:4 \
+CROP:35 \
+LEADING:5 \
+TRAILING:5 \
+SLIDINGWINDOW:4:20 \
+MINLEN:25
+
+echo "SRR1166442 complete."
+
+
+###############################################
+# SRR1166443
+###############################################
+echo "Trimming SRR1166443..."
+trimmomatic SE -phred33 \
+$INPUT_DIR/SRR1166443.fastq \
+$OUTPUT_DIR/SRR1166443_trimmed.fastq \
+HEADCROP:4 \
+CROP:38 \
+LEADING:5 \
+TRAILING:5 \
+SLIDINGWINDOW:4:20 \
+MINLEN:25
+
+echo "SRR1166443 complete."
+
+
+###############################################
+# SRR1166444
+###############################################
+echo "Trimming SRR1166444..."
+trimmomatic SE -phred33 \
+$INPUT_DIR/SRR1166444.fastq \
+$OUTPUT_DIR/SRR1166444_trimmed.fastq \
+HEADCROP:4 \
+LEADING:3 \
+TRAILING:3 \
+SLIDINGWINDOW:4:20 \
+MINLEN:30
+
+echo "SRR1166444 complete"
+
+
+###############################################
+# FASTQC
+###############################################
+echo "All trimming complete! Running FastQC on trimmed reads..."
+fastqc $OUTPUT_DIR/*_trimmed.fastq -o $FASTQC_POST -t 3
+
+echo "=========================================="
+echo "Trimming Summary:"
+echo "SRR1166442: Trimmed first 4bp, kept bp 5-35 (~31bp reads)"
+echo "SRR1166443: Trimmed first 4bp, kept bp 5-35 (~31bp reads)"
+echo "SRR1166444: Trimmed first 4bp, light quality filtering (~46bp reads)"
+echo "=========================================="
+echo "Check FastQC results in: $FASTQC_POST"
+```
+
+-   SRR1166445:
+
+1.  Remove first 4 bases.
+
+2.  Remove bases after 35.
+
+3.  Remove bases from the start of a read if their quality score is below five.
+
+4.  Remove bases from the end of a read if their quality score is below five.
+
+5.  If the average quality in the window drop below twenty, it trims the read from that point onward.
+
+6.  Drop reads shorter than 25 bases after trimming.
+
+-   SRR1166446:
+
+1.  Remove first 4 bases.
+
+2.  Remove bases after 35.
+
+3.  Remove bases from the start of a read if their quality score is below three.
+
+4.  Remove bases from the end of a read if their quality score is below three.
+
+5.  If the average quality in the window drop below twenty, it trims the read from that point onward.
+
+6.  Drop reads shorter than 30 bases after trimming.
+
+-   SRR1166447:
+
+1.  Remove first 4 bases.
+2.  Remove bases from the start of a read if their quality score is below three.
+3.  Remove bases from the end of a read if their quality score is below three.
+4.  If the average quality in the window drop below twenty, it trims the read from that point onward.
+5.  Drop reads shorter than 30 bases after trimming.
+
+```{bash}
+#!/bin/bash
+
+module load trimmomatic
+module load fastqc
+
+# Set directories
+INPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose
+OUTPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/trimmed_changed_results
+FASTQC_POST=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/fastqc_post_changed
+
+mkdir -p "$OUTPUT_DIR"
+mkdir -p "$FASTQC_POST"
+
+echo "Starting trimming for all samples"
+
+###############################################
+# SRR1166445
+###############################################
+echo "Trimming SRR1166445..."
+trimmomatic SE -phred33 \
+$INPUT_DIR/SRR1166445.fastq \
+$OUTPUT_DIR/SRR1166445_trimmed.fastq \
+HEADCROP:4 \
+CROP:35 \
+LEADING:5 \
+TRAILING:5 \
+SLIDINGWINDOW:4:20 \
+MINLEN:25
+
+echo "SRR1166445 complete."
+
+
+###############################################
+# SRR1166446
+###############################################
+echo "Trimming SRR1166446..."
+trimmomatic SE -phred33 \
+$INPUT_DIR/SRR1166446.fastq \
+$OUTPUT_DIR/SRR1166446_trimmed.fastq \
+HEADCROP:4 \
+CROP:35 \
+LEADING:5 \
+TRAILING:5 \
+SLIDINGWINDOW:4:20 \
+MINLEN:25
+
+echo "SRR1166446 complete."
+
+
+###############################################
+# SRR1166447
+###############################################
+echo "Trimming SRR1166447..."
+trimmomatic SE -phred33 \
+$INPUT_DIR/SRR1166447.fastq \
+$OUTPUT_DIR/SRR1166447_trimmed.fastq \
+HEADCROP:4 \
+LEADING:3 \
+TRAILING:3 \
+SLIDINGWINDOW:4:20 \
+MINLEN:30
+
+echo "SRR1166447 complete"
+
+
+###############################################
+# FASTQC
+###############################################
+echo "All trimming complete! Running FastQC on trimmed reads..."
+fastqc $OUTPUT_DIR/*_trimmed.fastq -o $FASTQC_POST -t 3
+
+echo "=========================================="
+echo "Trimming Summary:"
+echo "SRR1166445: Trimmed first 4bp, kept bp 5-35 (~31bp reads)"
+echo "SRR1166446: Trimmed first 4bp, kept bp 5-35 (~31bp reads)"
+echo "SRR1166447: Trimmed first 4bp, light quality filtering (~46bp reads)"
+echo "=========================================="
+echo "Check FastQC results in: $FASTQC_POST"
+```
+
+Then we checked the fastqc result again, found out that SRR1166442 and SRR1166445 still has some part in red region. So we checked the location and then trimmed again, this time trimmed by:
+
+-SRR1166442: Keep only location: 4-31
+
+```{bash}
+#!/bin/bash
+
+module load trimmomatic
+module load fastqc
+
+# Set directories
+INPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Glucose
+OUTPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Glucose/trimmed_changed_results_2
+FASTQC_POST=/scratch/grp/msc_appbio/Group8_ABCC/Glucose/fastqc_post_changed_2
+
+mkdir -p "$OUTPUT_DIR"
+mkdir -p "$FASTQC_POST"
+
+echo "Starting trimming for all samples"
+
+###############################################
+# SRR1166442
+###############################################
+echo "Trimming SRR1166442..."
+trimmomatic SE -phred33 \
+$INPUT_DIR/SRR1166442.fastq \
+$OUTPUT_DIR/SRR1166442_trimmed.fastq \
+HEADCROP:4 \
+CROP:31 \
+LEADING:5 \
+TRAILING:5 \
+SLIDINGWINDOW:4:20 \
+MINLEN:25
+
+echo "SRR1166442 complete."
+
+
+###############################################
+# SRR1166443
+###############################################
+echo "Trimming SRR1166443..."
+trimmomatic SE -phred33 \
+$INPUT_DIR/SRR1166443.fastq \
+$OUTPUT_DIR/SRR1166443_trimmed.fastq \
+HEADCROP:4 \
+CROP:38 \
+LEADING:5 \
+TRAILING:5 \
+SLIDINGWINDOW:4:20 \
+MINLEN:25
+
+echo "SRR1166443 complete."
+
+
+###############################################
+# SRR1166444
+###############################################
+echo "Trimming SRR1166444..."
+trimmomatic SE -phred33 \
+$INPUT_DIR/SRR1166444.fastq \
+$OUTPUT_DIR/SRR1166444_trimmed.fastq \
+HEADCROP:4 \
+LEADING:3 \
+TRAILING:3 \
+SLIDINGWINDOW:4:20 \
+MINLEN:30
+
+echo "SRR1166444 complete"
+
+
+###############################################
+# FASTQC
+###############################################
+echo "All trimming complete! Running FastQC on trimmed reads..."
+fastqc $OUTPUT_DIR/*_trimmed.fastq -o $FASTQC_POST -t 3
+
+echo "=========================================="
+echo "Trimming Summary:"
+echo "SRR1166442: Trimmed first 4bp, kept bp 5-35 (~31bp reads)"
+echo "SRR1166443: Trimmed first 4bp, kept bp 5-35 (~31bp reads)"
+echo "SRR1166444: Trimmed first 4bp, light quality filtering (~46bp reads)"
+echo "=========================================="
+echo "Check FastQC results in: $FASTQC_POST"
+```
+
+-   SRR1166445: Keep only location: 4-35
+
+```{bash}
+#!/bin/bash
+
+module load trimmomatic
+module load fastqc
+
+# Set directories
+INPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose
+OUTPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/trimmed_changed_results_2
+FASTQC_POST=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/fastqc_post_changed_2
+
+mkdir -p "$OUTPUT_DIR"
+mkdir -p "$FASTQC_POST"
+
+echo "Starting trimming for all samples"
+
+###############################################
+# SRR1166445
+###############################################
+echo "Trimming SRR1166445..."
+trimmomatic SE -phred33 \
+$INPUT_DIR/SRR1166445.fastq \
+$OUTPUT_DIR/SRR1166445_trimmed.fastq \
+HEADCROP:4 \
+CROP:31 \
+LEADING:5 \
+TRAILING:5 \
+SLIDINGWINDOW:4:20 \
+MINLEN:25
+
+echo "SRR1166445 complete."
+
+
+###############################################
+# SRR1166446
+###############################################
+echo "Trimming SRR1166446..."
+trimmomatic SE -phred33 \
+$INPUT_DIR/SRR1166446.fastq \
+$OUTPUT_DIR/SRR1166446_trimmed.fastq \
+HEADCROP:4 \
+CROP:35 \
+LEADING:5 \
+TRAILING:5 \
+SLIDINGWINDOW:4:20 \
+MINLEN:25
+
+echo "SRR1166446 complete."
+
+
+###############################################
+# SRR1166447
+###############################################
+echo "Trimming SRR1166447..."
+trimmomatic SE -phred33 \
+$INPUT_DIR/SRR1166447.fastq \
+$OUTPUT_DIR/SRR1166447_trimmed.fastq \
+HEADCROP:4 \
+LEADING:3 \
+TRAILING:3 \
+SLIDINGWINDOW:4:20 \
+MINLEN:30
+
+echo "SRR1166447 complete"
+
+
+###############################################
+# FASTQC
+###############################################
+echo "All trimming complete! Running FastQC on trimmed reads..."
+fastqc $OUTPUT_DIR/*_trimmed.fastq -o $FASTQC_POST -t 3
+
+echo "=========================================="
+echo "Trimming Summary:"
+echo "SRR1166445: Trimmed first 4bp, kept bp 5-35 (~31bp reads)"
+echo "SRR1166446: Trimmed first 4bp, kept bp 5-35 (~31bp reads)"
+echo "SRR1166447: Trimmed first 4bp, light quality filtering (~46bp reads)"
+echo "=========================================="
+echo "Check FastQC results in: $FASTQC_POST"
+```
+
+------------------------------------------------------------------------
+
+## Read Alignment
+
+### Align Reads to Reference
+
+First need to build a Bowtie2 index for the reference genome, becuase Bowtie2 does not align reads directly to a raw Fasts file. 
+```{bash}
+bowtie2-build combined_reference.fsa combined_reference.index 
+```
+After this command, six files has been created: 
+combine_index.1.bt2, combine_index.2.bt2, combine_index.3.bt2, 
+combine_index.4.bt2, combine_index.rev.1.bt2, combine_index.rev.2.bt2
+
+Then aligning multiple trimmed FASTQ files to reference genome, converting the results into compressed and indexed BAM files:
+```{bash}
+#!/bin/bash
+
+#-----------------------------
+# Modules
+#-----------------------------
+module load bowtie2
+module load samtools
+
+#-----------------------------
+# Paths
+#-----------------------------
+INDEX=/scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/combined_index
+INPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Glucose/trimmed_changed_results_2
+OUTPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Glucose/alignment_results
+
+#-----------------------------
+# Threads (default to 4 if not set by SLURM)
+#-----------------------------
+THREADS=${SLURM_CPUS_PER_TASK:-4}
+
+#-----------------------------
+# Create output directory
+#-----------------------------
+mkdir -p "$OUTPUT_DIR"
+
+#-----------------------------
+# Change to input directory
+#-----------------------------
+cd "$INPUT_DIR" || { echo "ERROR: Cannot change to input directory $INPUT_DIR"; exit 1; }
+
+#-----------------------------
+# Loop through FASTQ files
+#-----------------------------
+for file in *_trimmed.fastq; do
+    BASENAME=$(basename "$file" _trimmed.fastq)
+    
+    echo "-----------------------------------"
+    echo "Aligning $file ..."
+    
+    SAM="$OUTPUT_DIR/${BASENAME}.sam"
+    BAM="$OUTPUT_DIR/${BASENAME}.bam"
+    SORTED="$OUTPUT_DIR/${BASENAME}_sorted.bam"
+
+    # Bowtie2 alignment
+    if bowtie2 -p $THREADS -x $INDEX -U "$file" -S "$SAM"; then
+        echo "Bowtie2 alignment finished for $file"
+
+        # Convert SAM -> BAM
+        samtools view -@ $THREADS -bS "$SAM" > "$BAM"
+
+        # Sort BAM
+        samtools sort -@ $THREADS "$BAM" -o "$SORTED"
+
+        # Index BAM
+        samtools index "$SORTED"
+
+        # Remove SAM to save space
+        rm "$SAM"
+
+        echo "Done → $SORTED"
+    else
+        echo "ERROR: Bowtie2 failed for $file. Skipping this sample."
+    fi
+done
+
+```
+
+### Check Alignment Statistics
+
+```{bash}
+#view results
+samtools view -h SRR1166442.bam |head -n20
+
+#Results overview (flagstat)
+samtools flagstat SRR1166442_sorted.bam
+
+#Gives total mapped reads for each sample
+samtools idxstats SRR1166445_sorted.bam | awk '{sum+=$3} END {print "Total mapped:", sum}'
+
+# Count reads at each mapping quality
+samtools view SRR1166445_sorted.bam | \
+  awk '{print $5}' | \
+  sort -n | \
+  uniq -c | \
+  sort -rn
+
+# Output format: count quality_score
+
+```
+
+Glucose results:
+
+Results for **SRR1166442:**
+
+**Total Reads**
+
+-   37,214,642 reads processed
+
+-   All passed QC (0 failed)
+
+**Mapping Rate** = 97.48%
+
+-   36,275,744 reads mapped successfully
+
+-   938,898 reads unmapped (2.52%)
+
+**Sequencing Type** = single-end RNA-seq
+
+**No Duplicates Detected**
+
+-   This is because duplicate marking wasn't performed
+
+-   Not critical for RNA-seq
+
+**No Secondary/Supplementary Alignments:**
+
+-   Each read mapped to only one location (or didn't map)
+
+```{bash}
+37214642 + 0 in total (QC-passed reads + QC-failed reads) #all passed QC 
+37214642 + 0 primary 
+0 + 0 secondary 
+0 + 0 supplementary #each read only mapped to one location (or did not map) 
+0 + 0 duplicates #no duplicates (duplicate marking was not performed) 
+0 + 0 primary duplicates 
+36275744 + 0 mapped (97.48% : N/A) #36275744 successfully mapped
+36275744 + 0 primary mapped (97.48% : N/A) 
+0 + 0 paired in sequencing #single-end RNA-seq 
+0 + 0 read1 
+0 + 0 read2 
+0 + 0 properly paired (N/A : N/A) 
+0 + 0 with itself and mate mapped 
+0 + 0 singletons (N/A : N/A)
+0 + 0 with mate mapped to a different chr 
+0 + 0 with mate mapped to a different chr (mapQ>=5)
+```
+
+Results for **SRR1166443**:
+
+```{bash}
+41168645 + 0 in total (QC-passed reads + QC-failed reads) #all passed QC
+41168645 + 0 primary
+0 + 0 secondary
+0 + 0 supplementary
+0 + 0 duplicates
+0 + 0 primary duplicates
+40250654 + 0 mapped (97.77% : N/A) #40250654 successfully mapped
+40250654 + 0 primary mapped (97.77% : N/A)
+0 + 0 paired in sequencing
+0 + 0 read1
+0 + 0 read2
+0 + 0 properly paired (N/A : N/A)
+0 + 0 with itself and mate mapped
+0 + 0 singletons (N/A : N/A)
+0 + 0 with mate mapped to a different chr
+0 + 0 with mate mapped to a different chr (mapQ>=5)
+```
+
+Results for **SRR1166444:**
+
+```{bash}
+32619263 + 0 in total (QC-passed reads + QC-failed reads)
+32619263 + 0 primary
+0 + 0 secondary
+0 + 0 supplementary
+0 + 0 duplicates
+0 + 0 primary duplicates
+31801525 + 0 mapped (97.49% : N/A)
+31801525 + 0 primary mapped (97.49% : N/A)
+0 + 0 paired in sequencing
+0 + 0 read1
+0 + 0 read2
+0 + 0 properly paired (N/A : N/A)
+0 + 0 with itself and mate mapped
+0 + 0 singletons (N/A : N/A)
+0 + 0 with mate mapped to a different chr
+0 + 0 with mate mapped to a different chr (mapQ>=5)
+
+```
+
+Cellobiose reads:
+
+Results for **SRR1166445:**
+
+```{bash}
+41501841 + 0 in total (QC-passed reads + QC-failed reads)
+41501841 + 0 primary
+0 + 0 secondary
+0 + 0 supplementary
+0 + 0 duplicates
+0 + 0 primary duplicates
+40036266 + 0 mapped (96.47% : N/A)
+40036266 + 0 primary mapped (96.47% : N/A)
+0 + 0 paired in sequencing
+0 + 0 read1
+0 + 0 read2
+0 + 0 properly paired (N/A : N/A)
+0 + 0 with itself and mate mapped
+0 + 0 singletons (N/A : N/A)
+0 + 0 with mate mapped to a different chr
+0 + 0 with mate mapped to a different chr (mapQ>=5)
+```
+
+Results for **SRR1166446:**
+
+```{bash}
+34815097 + 0 in total (QC-passed reads + QC-failed reads)
+34815097 + 0 primary
+0 + 0 secondary
+0 + 0 supplementary
+0 + 0 duplicates
+0 + 0 primary duplicates
+33855054 + 0 mapped (97.24% : N/A)
+33855054 + 0 primary mapped (97.24% : N/A)
+0 + 0 paired in sequencing
+0 + 0 read1
+0 + 0 read2
+0 + 0 properly paired (N/A : N/A)
+0 + 0 with itself and mate mapped
+0 + 0 singletons (N/A : N/A)
+0 + 0 with mate mapped to a different chr
+0 + 0 with mate mapped to a different chr (mapQ>=5)
+```
+
+Results for **SRR1166447:**
+
+```{bash}
+32270905 + 0 in total (QC-passed reads + QC-failed reads)
+32270905 + 0 primary
+0 + 0 secondary
+0 + 0 supplementary
+0 + 0 duplicates
+0 + 0 primary duplicates
+31253210 + 0 mapped (96.85% : N/A)
+31253210 + 0 primary mapped (96.85% : N/A)
+0 + 0 paired in sequencing
+0 + 0 read1
+0 + 0 read2
+0 + 0 properly paired (N/A : N/A)
+0 + 0 with itself and mate mapped
+0 + 0 singletons (N/A : N/A)
+0 + 0 with mate mapped to a different chr
+0 + 0 with mate mapped to a different chr (mapQ>=5)
+```
+
+Alignment result:
+
+**Cellobiose (30293057):**
+
+\> SRR1166445: 41501841 reads; 41501841 (100.00%) were unpaired; 1465575 (3.53%) aligned 0 times; 34261349 (82.55%) aligned exactly 1 time; 5774917 (13.91%) aligned \>1 times; 96.47% overall alignment rate
+
+\> SRR1166446: 34815097 reads; 34815097 (100.00%) were unpaired; 960043 (2.76%) aligned 0 times; 29003438 (83.31%) aligned exactly 1 time; 4851616 (13.94%) aligned \>1 times; 97.24% overall alignment rate
+
+\> SRR1166447: 32270905 reads; 32270905 (100.00%) were unpaired; 1017695 (3.15%) aligned 0 times; 26554903 (82.29%) aligned exactly 1 time; 4698307 (14.56%) aligned \>1 times; 96.85% overall alignment rate
+
+**Glucose (30293923):**
+
+\> SRR1166442: 37214642 reads; 37214642 (100.00%) were unpaired; 938898 (2.52%) aligned 0 times; 31273215 (84.03%) aligned exactly 1 time; 5002529 (13.44%) aligned \>1 times; 97.48% overall alignment rate
+
+\>SRR1166443: 41168645 reads; 41168645 (100.00%) were unpaired; 917991 (2.23%) aligned 0 times; 34622989 (84.10%) aligned exactly 1 time; 5627665 (13.67%) aligned \>1 times; 97.77% overall alignment rate
+
+\>SRR1166444: 32619263 reads; 32619263 (100.00%) were unpaired; 817738 (2.51%) aligned 0 times; 27135903 (83.19%) aligned exactly 1 time; 4665622 (14.30%) aligned \>1 times; 97.49% overall alignment rate
+
+```         
+```
+
+## Quantify Gene Expression
+
+RPKM = (Number of reads mapped to gene × 10⁹) / (Total mapped reads × Gene length in bp)
+
+### Count Reads Per Gene
+
+```{bash}
+#Using HTSeq
+#!/bin/bash
+
+#-----module need-----
+#load HTSeq on HPC
+module load py-htseq/0.11.2-gcc-13.2.0-python-3.11.6  
+
+#-----Direction-----
+INPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/alignment_results
+OUTPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/Quantify_Gene_Expression
+Annotation_DIR=/scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference
+mkdir -p  "$OUTPUT_DIR"
+
+echo "Starting to count the read per gene"
+
+#-----SRR1166445-----
+echo "Counting SRR1166445"
+htseq-count -f bam -r pos --idattr=Parent $INPUT_DIR/SRR1166445_sorted.bam $Annotation_DIR/combined_reference_annotation.gff > SRR1166445_counts_1.txt 
+#idattr=Parent to make the parent column the ID 
+echo "SRR1166445 complete"
+
+#-----SRR1166446-----
+echo "Counting SRR1166446"
+htseq-count -f bam -r pos --idattr=Parent $INPUT_DIR/SRR1166446_sorted.bam $Annotation_DIR/combined_reference_annotation.gff>
+#idattr=Parent to make the parent column the ID 
+echo "SRR1166446 complete"
+
+#-----SRR1166447-----
+echo "Counting SRR1166447"
+htseq-count -f bam -r pos --idattr=Parent $INPUT_DIR/SRR1166447_sorted.bam $Annotation_DIR/combined_reference_annotation.gff>
+#idattr=Parent to make the parent column the ID 
+echo "SRR1166447 complete"
+```
+
+At first time to run the code, got error: error i got: Error occured when processing GFF file (line 10142 of file /scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/combined_reference_annotation.gff): unmatched quote \[Exception type: ValueError, raised in \_HTSeq.pyx:1597\];
+
+That is because in annotation file, got a unexpected ‘“‘. Need to remove it !!
+```{bash}
+# First check how it looks like in the 1042 line.
+nano +10142 combined_reference_annotation.gff 
+# See there has a unpaired quotation marks, then remove it 
+sed '10142s/"//g' combined_reference_annotation.gff > cleaned.gff
+# Right now check there has no more unpaired quotation marks 
+nano +10142 clean.gff
+```
+
+Then run the script above again, error occurs: Error:Starting to count the read per gene Counting SRR1166445 Error occured when processing GFF file (line 16321 of file /scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/cleaned.gff): Feature GH1-1 does not contain a 'Parent' attribute \[Exception type: ValueError, raised in count.py:76\] SRR1166445 complete In this case, this is due to there has no parent info for the insertion genome therefore cannot run it. Then change to run by ID.
+
+```{bash}
+#Using HTSeq
+#!/bin/bash
+
+#-----module need-----
+#load HTSeq on HPC
+module load py-htseq/0.11.2-gcc-13.2.0-python-3.11.6  
+
+#-----Direction-----
+INPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/alignment_results
+OUTPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/Quantify_Gene_Expression
+Annotation_DIR=/scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference
+mkdir -p  "$OUTPUT_DIR"
+
+echo "Starting to count the read per gene"
+
+#-----SRR1166445-----
+echo "Counting SRR1166445"
+htseq-count -f bam -r pos --idattr=ID $INPUT_DIR/SRR1166445_sorted.bam $Annotation_DIR/combined_reference_annotation.gff > SRR1166445_counts_1.txt 
+#idattr=Parent to make the parent column the ID 
+echo "SRR1166445 complete"
+
+#-----SRR1166446-----
+echo "Counting SRR1166446"
+htseq-count -f bam -r pos --idattr=ID $INPUT_DIR/SRR1166446_sorted.bam $Annotation_DIR/combined_reference_annotation.gff>
+#idattr=Parent to make the parent column the ID 
+echo "SRR1166446 complete"
+
+#-----SRR1166447-----
+echo "Counting SRR1166447"
+htseq-count -f bam -r pos --idattr=ID $INPUT_DIR/SRR1166447_sorted.bam $Annotation_DIR/combined_reference_annotation.gff>
+#idattr=Parent to make the parent column the ID 
+echo "SRR1166447 complete"
+```
+
+Error occured again: Error occured when processing GFF file (line 13170 of file /scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/cleaned.gff): Feature snR48_BY4742 does not contain a 'ID' attribute \[Exception type: ValueError, raised in count.py:76\] This is becuase the ID lack in some of the lines. Changed to name, also got same error. Therefore, we released that some is lack in the insert genome some is lack in the reference genome. There has 2 option, one is to fill the id or name, another is do the counting stuff seperately and add the result tgt, this will avoid editing the GFF for thousands of features and the “missing attribute” problem because each GFF uses the attribute it actually has. We decidede to run the Count Reads Per Gene separately, so run with the reference genome It is fine, cause HTSeq-count counts reads per feature in a GFF file. Think of --idattr as choosing a column name for counting: Reference GFF → Parent column Insert GFF → gene_id column HTSeq reads only that column. When merging, you just treat them all as “gene IDs” — it doesn’t matter which column was used in the original GFF.
+```{bash}
+#!/bin/bash 
+
+#-----load module-----
+module load py-htseq/0.11.2-gcc-13.2.0-python-3.11.6  
+module load python/3.11.6 
+
+#-----directories-----
+INPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/alignment_results
+OUTPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/Quantify_Gene_Expression
+REF_GFF=/scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/no_fasta_ref.gff
+INSERT_GFF=/scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/transgenes_clean.gff
+
+mkdir -p "$OUTPUT_DIR"
+
+echo "Starting HTSeq-count for all samples"
+
+#-----SRR1166445-----
+echo "Counting SRR1166445 for reference genome"
+htseq-count -f bam -r pos --idattr=Parent \
+    "$INPUT_DIR/SRR1166445_sorted.bam" \
+    "$REF_GFF" \
+    > "$OUTPUT_DIR/SRR1166445_ref_counts.txt"
+echo "SRR1166445 reference genome complete"
+
+echo "Counting SRR1166445 for insert genome"
+htseq-count -f bam -r pos --idattr=gene_id \
+    "$INPUT_DIR/SRR1166445_sorted.bam" \
+    "$INSERT_GFF" \
+    > "$OUTPUT_DIR/SRR1166445_insert_counts.txt"
+echo "SRR1166445 insert genome complete"
+
+#-----SRR1166446-----
+echo "Counting SRR1166446 for reference genome..."
+htseq-count -f bam -r pos --idattr=Parent \
+    "$INPUT_DIR/SRR1166446_sorted.bam" \
+    "$REF_GFF" \
+    > "$OUTPUT_DIR/SRR1166446_ref_counts.txt"
+echo "SRR1166446 reference genome complete"
+
+echo "Counting SRR1166446 for insert genome..."
+htseq-count -f bam -r pos --idattr=gene_id \
+    "$INPUT_DIR/SRR1166446_sorted.bam" \
+    "$INSERT_GFF" \
+    > "$OUTPUT_DIR/SRR1166446_insert_counts.txt"
+echo "SRR1166446 insert genome complete"
+
+#-----SRR1166447-----
+echo "Counting SRR1166447 for reference genome..."
+htseq-count -f bam -r pos --idattr=Parent \
+    "$INPUT_DIR/SRR1166447_sorted.bam" \
+    "$REF_GFF" \
+    > "$OUTPUT_DIR/SRR1166447_ref_counts.txt"
+echo "SRR1166447 reference genome complete"
+
+echo "Counting SRR1166447 for insert genome..."
+htseq-count -f bam -r pos --idattr=gene_id \
+    "$INPUT_DIR/SRR1166447_sorted.bam" \
+    "$INSERT_GFF" \
+    > "$OUTPUT_DIR/SRR1166447_insert_counts.txt"
+echo "SRR1166447 insert genome complete"
+
+echo "All HTSeq-count jobs finished!"
+```
+
+However, this code finally produced the outcome without any error. While we processed to next step to normalised the result from HTSeq, the output from this script couldn't work. 
+Therefore, we re-write whole script to run the HTSeq and normalisation together.
+
+This is to count reads per gene using HTSeq and then normalise the counts to CPM and RPKM. 
+At first we extract gene length from the annotation files (reference + inserts), then we count the reads per gene using HTSeq-count. After than we normalised the counts to CPM and RPKM. 
+```{bash}
+#!/bin/bash
+#SBATCH --job-name=htseq_rpkm
+#SBATCH --output=htseq_rpkm.out
+#SBATCH --error=htseq_rpkm.err
+#SBATCH --time=04:00:00
+#SBATCH --mem=16G
+
+# ----- Load modules -----
+module load py-htseq/0.11.2-gcc-13.2.0-python-3.11.6
+module load py-pandas/1.5.3-gcc-13.2.0-python-3.11.6
+
+# ----- Directories -----
+INPUT_DIR=/scratch/users/k25127820/Group8_ABCC/Glucose/alignment_results
+OUTPUT_DIR=/scratch/users/k25127820/Group8_ABCC/Glucose/Quantify_Gene_Expression
+mkdir -p "$OUTPUT_DIR"
+
+REF_GFF=/scratch/users/k25127820/Group8_ABCC/reference_genome/combined_reference/no_fasta_ref.gff
+INSERT_GFF=/scratch/users/k25127820/Group8_ABCC/reference_genome/combined_reference/transgenes.gff
+
+# ----- Gene lengths CSV -----
+GENE_LENGTHS="$OUTPUT_DIR/gene_lengths.csv"
+
+# ----- Extract gene lengths from GFF -----
+echo "Extracting gene lengths from GFF files..."
+python3 - <<EOF
+import pandas as pd
+
+# Bash variables
+GENE_LENGTHS = "$GENE_LENGTHS"
+REF_GFF = "$REF_GFF"
+INSERT_GFF = "$INSERT_GFF"
+
+def gff_to_lengths(gff_file, id_attr):
+    lengths = []
+    with open(gff_file) as f:
+        for line in f:
+            if line.startswith("#"):
+                continue
+            parts = line.strip().split("\t")
+            if len(parts) < 9:
+                continue
+            start = int(parts[3])
+            end = int(parts[4])
+            info = parts[8]
+            gene_id = None
+            for field in info.split(";"):
+                if field.startswith(f"{id_attr}="):
+                    gene_id = field.split("=")[1]
+                    break
+            if gene_id:
+                lengths.append((gene_id, end - start + 1))
+    return pd.DataFrame(lengths, columns=["gene_id", "length_bp"])
+
+ref_lengths = gff_to_lengths(REF_GFF, "Parent")
+insert_lengths = gff_to_lengths(INSERT_GFF, "gene_id")
+
+all_lengths = pd.concat([ref_lengths, insert_lengths])
+all_lengths = all_lengths.groupby("gene_id", as_index=False).sum()
+all_lengths.to_csv(GENE_LENGTHS, index=False)
+print(f"Gene lengths saved to {GENE_LENGTHS}")
+EOF
+
+# ----- HTSeq-count for all samples (reference and insert separately) -----
+SAMPLES=(SRR1166442 SRR1166443 SRR1166444)
+GENOMES=("ref" "insert")
+
+for SAMPLE in "${SAMPLES[@]}"; do
+    for GENOME in "${GENOMES[@]}"; do
+        if [ "$GENOME" == "ref" ]; then
+            GFF="$REF_GFF"
+            IDATTR="Parent"
+        else
+            GFF="$INSERT_GFF"
+            IDATTR="gene_id"
+        fi
+
+        echo "Counting $SAMPLE for $GENOME genome..."
+        htseq-count -f bam -r pos --idattr="$IDATTR" \
+            "$INPUT_DIR/${SAMPLE}_sorted.bam" \
+            "$GFF" \
+            > "$OUTPUT_DIR/${SAMPLE}_${GENOME}_counts.txt"
+        
+        # Check if output file has content
+        if [ ! -s "$OUTPUT_DIR/${SAMPLE}_${GENOME}_counts.txt" ]; then
+            echo "WARNING: Empty output for ${SAMPLE}_${GENOME}"
+        fi
+    done
+done
+
+echo "HTSeq-count completed for all samples and genomes."
+
+# ----- Normalize CPM + RPKM separately -----
+echo "Starting normalization..."
+python3 - <<EOF
+import pandas as pd
+import os
+
+OUTPUT_DIR = "$OUTPUT_DIR"
+GENE_LENGTHS = "$GENE_LENGTHS"
+
+# FIXED: Use the same sample IDs as in HTSeq-count
+samples = ["SRR1166442", "SRR1166443", "SRR1166444"]
+genomes = ["ref", "insert"]
+
+# Read gene lengths
+lengths_df = pd.read_csv(GENE_LENGTHS)
+lengths_df = lengths_df.set_index("gene_id")
+
+for s in samples:
+    for g in genomes:
+        file_path = os.path.join(OUTPUT_DIR, f"{s}_{g}_counts.txt")
+        
+        # Check if file exists and has content
+        if not os.path.exists(file_path):
+            print(f"ERROR: File not found: {file_path}")
+            continue
+        
+        if os.path.getsize(file_path) == 0:
+            print(f"ERROR: Empty file: {file_path}")
+            continue
+        
+        # Read counts
+        df = pd.read_csv(file_path, sep="\t", header=None)
+        df.columns = ["gene", "count"]
+        df = df.set_index("gene")
+        
+        # Remove HTSeq special rows
+        special_rows = ["__no_feature", "__ambiguous", "__too_low_aQual", "__not_aligned", "__alignment_not_unique"]
+        df = df.drop(special_rows, errors='ignore')
+        
+        # Calculate CPM
+        total_reads = df["count"].sum()
+        cpm = df["count"] / total_reads * 1e6
+        
+        # Calculate RPKM (only for genes with known lengths)
+        matched = df.index.intersection(lengths_df.index)
+        rpkm = pd.Series(index=df.index, dtype=float)
+        if len(matched) > 0:
+            rpkm.loc[matched] = (df.loc[matched, "count"] * 1e9) / (total_reads * lengths_df.loc[matched, "length_bp"])
+        
+        # Create output dataframe
+        df_out = pd.DataFrame({
+            "count": df["count"], 
+            "CPM": cpm, 
+            "RPKM": rpkm
+        })
+        
+        output_file = os.path.join(OUTPUT_DIR, f"{s}_{g}_normalized.csv")
+        df_out.to_csv(output_file)
+        print(f"Saved: {output_file}")
+
+print("CPM and RPKM normalization complete for reference and insert genomes separately.")
+EOF
+
+echo "Pipeline finished successfully!"
+```
+
+### Normalise "by totals"
