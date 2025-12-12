@@ -33,11 +33,11 @@ mkdir Cellobiose
 Downloaded from <https://www.yeastgenome.org/>
 
 ```{bash}
-wget http://sgd-archive.yeastgenome.org/sequence/strains/BY4742/BY4742_Stanford_2014_JRIR00000000/BY4742_Stanford_2014_JRIR00000000.fsa.gz
+wget http://sgd-archive.yeastgenome.org/sequence/strains/BY4742/BY4742_Toronto_2012/BY4742_Toronto_2012.fsa.gz
 
 ```
 
-For the insertion sequences (gh1-1 & cdt-1); get onto several website on ncbi then copy and paste onto txt files.
+For the insertion sequences (gh1-1 & cdt-1); get on ncbi then copy and paste onto txt files.
 
 gh1-1: <https://www.ncbi.nlm.nih.gov/nuccore/NC_026503.1?report=fasta&from=2730966&to=2733380&strand=true>
 
@@ -48,7 +48,7 @@ nano gh1-1.txt
 nano cdt-1.txt
 ```
 
-Right now, the example of the txt files. (need to remove the carriage returns, tabs, and space from the sequence part)
+Right now, the example of the .txt files (need to remove the carriage returns, tabs, and space from the sequence part).
 
 ```{bash}
 #keep the first line unchanged, and remove the newlines, carriage retuns, tab, and space from the rest.
@@ -56,7 +56,7 @@ Right now, the example of the txt files. (need to remove the carriage returns, t
 ( head -n 1 gh1-1.txt && tail -n +2 gh1-1.txt | tr -d '\n\r\t ' ) > cdt-1_clean.txt
 ```
 
-Turn the txt files into fasta file (cause the reference genome use .fsa, in this case, will stay as same as reference genome).The txt files are already in fasta formate (has header line starting with '\>' follwed by sequence data, therefore can directly rename or copy it to convert the file). To keep all be recorded, will use copy.
+Turn the .txt files into FASTA file (because the reference genome uses .fsa, in this case, it will stay as same as reference genome). The .txt files are already in FASTA format (header line starting with '\>' followed by sequence data), therefore can directly rename or copy it to convert the file. We will use a copy.
 
 ```{bash}
 cp gh1-1_clean.txt gh1-1.fsa
@@ -69,7 +69,7 @@ cp cdt-1_clean.txt cdt-1.fsa
 cat BY4742_Toronto_2012.fsa gh1-1.fsa cdt-1.fsa > combined_reference.fsa
 ```
 
-After running this command, an error occur -- When combining the files, the cdt-1 won't add in a new line, it just added at the last genome code of the gh1-1 sequence, that's because gh1-1.fsa doesn't end with a new line. Need to add a new line for combing.
+After running this command, an error occured -- When combining the files, the cdt-1 won't add in a new line, it just added at the last genome code of the gh1-1 sequence, that's because gh1-1.fsa doesn't end with a new line. Need to add a new line for combining.
 
 ```{bash}
 echo "" >> gh1-1.fsa 
@@ -88,11 +88,19 @@ grep -v "^>" combined_reference.fasta | tr -d '\n' | wc -c
 
 ## Create annotation file
 
-The annotation file of reference genome is downloaded from the same website as the reference genome fastq file. Here need to create the annotation for both gh1-1 and cdt-1.
+The annotation file of reference genome is downloaded from the same website as the reference genome FastQ file. Here, we need to create the annotation for both gh1-1 and cdt-1.
 
-Annotation file (.gff or .gtf) is tab delimited text files, that describe the locations and structures of genes and otehr genomic features. The reason for making it, is when analysing the sequences data, need to tell the software that 1. where genes are located on each chromosome/sequence. 2. What parts are exon, introns, CDS (coding sequences). 3. Gene names and IDs. Without an annotation file, the aligner won't knwo that what sequences contain genes, and some of the tools like HTSeq and featureCounts won't be able to count reads mapping to these genes. There has 9 tab-separated columns: Seqname, Source, feature, start, end, score, trand, frame, and attributes. To do this:
+Annotation file (.gff or .gtf) are tab delimited text files that describe the locations and structures of genes and other genomic features. This is made because when analysing the sequences data the software needs to be told:
 
-First, need to calculate the length of sequences
+1\. Where genes are located on each chromosome/sequence.
+
+2\. What parts are exon, introns and CDS (coding sequences).
+
+3\. Gene names and IDs.
+
+Without an annotation file, the aligner won't know that what sequences contain genes, and some of the tools like HTSeq and featureCounts won't be able to count reads mapping to these genes. There are 9 tab-separated columns: Seqname, Source, feature, start, end, score, trand, frame, and attributes. To do this:
+
+First, we need to calculate the length of sequences.
 
 ```{bash}
 GH1_LEN=$(grep -v "^>" gh1-1.fsa | tr -d '\n'|wc -c)
@@ -114,13 +122,13 @@ synthetic_cdt-1	manual	exon	1	$CDT_LEN	.	+	.	gene_id "CDT-1"; transcript_id "CDT
 EOF
 ```
 
-After making the annotation file of the insertion genome, combine the insertion genome annotation and reference genome annotation.
+After making the annotation file of the insertion genome, we combine the insertion genome annotation and reference genome annotation.
 
 ```{bash}
 cat BY4742_Toronto_2012_annotation.gff transgenes.gff > combined_reference_annotation.gff
 ```
 
-There has a problem -- when checking the tail of the combined annotation file, there has some sequence information before gh1-1 and cdt-1. That’s because there has some sequence at the end of the reference one. Therefore need to remove fasta part in reference.
+But when checking the tail of the combined annotation file, there is some sequence information before gh1-1 and cdt-1. That’s because there is some sequences at the end of the reference one. Therefore need to remove the FASTA part in reference.
 
 ```{bash}
 awk '/^##FASTA/ {exit} {print}' BY4742_Toronto_2012_annotation.gff > no_fasta_ref.gff
@@ -215,7 +223,19 @@ done
 
 ### Trim and Filter Reads
 
-At first we trimmed by: 1. Remove first 4 bases. 2. Remove bases from the start of the read until quality greater or equal to three. 3. Remove bases from the end of the read until the quality greater or equal to three. 4. cut the reads when the average drops below Q20. 5. If the read is shorter than 30 bp, drop the read. After trimmed the sequences, we made another fastqc test to check the quality after trimming is as good as we want.
+At first we trimmed by:
+
+1\. Removing first 4 bases.
+
+2\. Removing bases from the start of the read until the quality was greater or equal to three.
+
+3\. Removing bases from the end of the read until the quality greater or equal to three.
+
+4\. Cutting the reads when the average drops below Q20.
+
+5\. If the read is shorter than 30 bp, drop the read.
+
+After trimming the sequences, we ran another FastQC test to check the quality post-trimming.
 
 ```{bash}
 #!/bin/bash
@@ -275,19 +295,19 @@ echo "All trimming and FastQC complete!"
 echo "Check FastQC results in: $FASTQC_POST"
 ```
 
-Then we check the fastqc_post result, still have some in red region.
+Then we check the fastqc_post result, but still have some reads in the red region.
 
--   SRR1166442: Still has a peak went down to red region.
+-   SRR1166442: Still has a peak in the red region.
 
 <!-- -->
 
--   SRR1166446: Still has a peak went down to red region.
+-   SRR1166446: Still has a peak in the red region.
 
-Therefore, we looked into the first fastqc result again, and decided to trim the sequences separetely with different rules.
+Therefore, we looked into the first FastQC result again and decided to trim the sequences separately with different rules.
 
 SRR1166442:
 
-1.  Remove first 4 bases.
+1.  Remove first four bases.
 
 2.  Remove bases after 35.
 
@@ -295,25 +315,25 @@ SRR1166442:
 
 4.  Remove bases from the end of a read if their quality score is below five.
 
-5.  If the average quality in the window drop below twenty, it trims the read from that point onward.
+5.  If the average quality in the window drop below 20, trim the read from that point onward.
 
 6.  Drop reads shorter than 25 bases after trimming.
 
 -   SRR1166443:
 
-1.  Remove first 4 bases.
+1.  Remove first four bases.
 2.  Remove bases after 38.
 3.  Remove bases from the start of a read if their quality score is below five.
 4.  Remove bases from the end of a read if their quality score is below five.
-5.  If the average quality in the window drop below twenty, it trims the read from that point onward.
+5.  If the average quality in the window drop below twenty, trim the read from that point onward.
 6.  Drop reads shorter than 25 bases after trimming.
 
 -   SRR1166444:
 
-1.  Remove first 4 bases.
+1.  Remove first four bases.
 2.  Remove bases from the start of a read if their quality score is below three.
 3.  Remove bases from the end of a read if their quality score is below three.
-4.  If the average quality in the window drop below twenty, it trims the read from that point onward.
+4.  If the average quality in the window drop below twenty, trim the read from that point onward.
 5.  Drop reads shorter than 30 bases after trimming.
 
 ```{bash}
@@ -399,7 +419,7 @@ echo "Check FastQC results in: $FASTQC_POST"
 
 -   SRR1166445:
 
-1.  Remove first 4 bases.
+1.  Remove first four bases.
 
 2.  Remove bases after 35.
 
@@ -407,13 +427,13 @@ echo "Check FastQC results in: $FASTQC_POST"
 
 4.  Remove bases from the end of a read if their quality score is below five.
 
-5.  If the average quality in the window drop below twenty, it trims the read from that point onward.
+5.  If the average quality in the window drop below twenty, trim the read from that point onward.
 
 6.  Drop reads shorter than 25 bases after trimming.
 
 -   SRR1166446:
 
-1.  Remove first 4 bases.
+1.  Remove first four bases.
 
 2.  Remove bases after 35.
 
@@ -421,16 +441,16 @@ echo "Check FastQC results in: $FASTQC_POST"
 
 4.  Remove bases from the end of a read if their quality score is below three.
 
-5.  If the average quality in the window drop below twenty, it trims the read from that point onward.
+5.  If the average quality in the window drop below twenty, trim the read from that point onward.
 
 6.  Drop reads shorter than 30 bases after trimming.
 
 -   SRR1166447:
 
-1.  Remove first 4 bases.
+1.  Remove first four bases.
 2.  Remove bases from the start of a read if their quality score is below three.
 3.  Remove bases from the end of a read if their quality score is below three.
-4.  If the average quality in the window drop below twenty, it trims the read from that point onward.
+4.  If the average quality in the window drop below twenty, trim the read from that point onward.
 5.  Drop reads shorter than 30 bases after trimming.
 
 ```{bash}
@@ -514,7 +534,7 @@ echo "=========================================="
 echo "Check FastQC results in: $FASTQC_POST"
 ```
 
-Then we checked the fastqc result again, found out that SRR1166442 and SRR1166445 still has some part in red region. So we checked the location and then trimmed again, this time trimmed by:
+Then we checked the FastQC result again and found that SRR1166442 and SRR1166445 still has some reads in the red region. So, we checked the location and trimmed again, this time by:
 
 -SRR1166442: Keep only location: 4-31
 
@@ -688,15 +708,15 @@ echo "Check FastQC results in: $FASTQC_POST"
 
 ### Align Reads to Reference
 
-First need to build a Bowtie2 index for the reference genome, becuase Bowtie2 does not align reads directly to a raw Fasts file.
+First we need to build a Bowtie2 index for the reference genome, because Bowtie2 does not align reads directly to a raw FASTA file.
 
 ```{bash}
 bowtie2-build combined_reference.fsa combined_reference.index 
 ```
 
-After this command, six files has been created: combine_index.1.bt2, combine_index.2.bt2, combine_index.3.bt2, combine_index.4.bt2, combine_index.rev.1.bt2, combine_index.rev.2.bt2
+This creates six files: combine_index.1.bt2, combine_index.2.bt2, combine_index.3.bt2, combine_index.4.bt2, combine_index.rev.1.bt2, combine_index.rev.2.bt2
 
-Then aligning multiple trimmed FASTQ files to reference genome, converting the results into compressed and indexed BAM files:
+Then, we align multiple trimmed FASTQ files to the reference genome, converting the results into compressed and indexed BAM files:
 
 ```{bash}
 #!/bin/bash
@@ -969,7 +989,7 @@ Alignment result:
 
 RPKM = (Number of reads mapped to gene × 10⁹) / (Total mapped reads × Gene length in bp)
 
-### Count Reads Per Gene
+### Count Reads Per Gene and Normalise 
 
 ```{bash}
 #Using HTSeq
@@ -1056,7 +1076,13 @@ htseq-count -f bam -r pos --idattr=ID $INPUT_DIR/SRR1166447_sorted.bam $Annotati
 echo "SRR1166447 complete"
 ```
 
-Error occured again: Error occured when processing GFF file (line 13170 of file /scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/cleaned.gff): Feature snR48_BY4742 does not contain a 'ID' attribute \[Exception type: ValueError, raised in count.py:76\] This is becuase the ID lack in some of the lines. Changed to name, also got same error. Therefore, we released that some is lack in the insert genome some is lack in the reference genome. There has 2 option, one is to fill the id or name, another is do the counting stuff seperately and add the result tgt, this will avoid editing the GFF for thousands of features and the “missing attribute” problem because each GFF uses the attribute it actually has. We decidede to run the Count Reads Per Gene separately, so run with the reference genome It is fine, cause HTSeq-count counts reads per feature in a GFF file. Think of --idattr as choosing a column name for counting: Reference GFF → Parent column Insert GFF → gene_id column HTSeq reads only that column. When merging, you just treat them all as “gene IDs” — it doesn’t matter which column was used in the original GFF.
+Error occured again: Error occured when processing GFF file (line 13170 of file /scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/cleaned.gff): Feature snR48_BY4742 does not contain a 'ID' attribute \[Exception type: ValueError, raised in count.py:76\]
+
+This is becauase the ID is not in some of the lines. Changed to name, also got same error. Therefore, we realised that some are lacking in the insert genome and some in the reference genome. There are 2 option, one is to fill the ID or name, another is do the counting separately and add the result together to avoid editing the GFF for thousands of features and the “missing attribute” problem because each GFF uses the attribute it actually has.
+
+We decided to run the Count Reads Per Gene separately, so we run them with the reference genome. This works because HTSeq-count counts reads per feature in a GFF file.
+
+Think of --idattr as choosing a column name for counting: Reference GFF → Parent column Insert GFF → gene_id column HTSeq reads only that column. When merging, you just treat them all as “gene IDs” — it doesn’t matter which column was used in the original GFF.
 
 ```{bash}
 #!/bin/bash 
@@ -1123,7 +1149,7 @@ echo "SRR1166447 insert genome complete"
 echo "All HTSeq-count jobs finished!"
 ```
 
-However, this code finally produced the outcome without any error. While we processed to next step to normalised the result from HTSeq, the output from this script couldn't work due to no gene length file. Therefore, we re-write whole script to run the HTSeq and normalisation together.
+This code ran without errors. But when we normalised the result from HTSeq, the output from this script couldn't work due to no gene length file. Therefore, we re-wrote the script to run the HTSeq and normalisation together.
 
 This is to count reads per gene using HTSeq and then normalise the counts to CPM and RPKM. At first we extract gene length from the annotation files (reference + inserts), then we count the reads per gene using HTSeq-count. After than we normalised the counts to CPM and RPKM.
 
@@ -1285,4 +1311,4 @@ EOF
 echo "Pipeline finished successfully!"
 ```
 
-### Normalise "by totals"
+### 
