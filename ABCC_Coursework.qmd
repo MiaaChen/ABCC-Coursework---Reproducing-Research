@@ -13,7 +13,7 @@ editor: visual
 ### Downloading Raw Sequencing Files
 
 ```{bash}
-#make directory to downoad FASTQ files into
+#make directory to download FASTQ files into
 mkdir /scratch/grp/msc_appbio/Group8_ABCC
 
 #downloading raw sequencing files from NCBI Expression Omnibus (accession no.GSE54825)
