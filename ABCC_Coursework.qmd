@@ -48,15 +48,15 @@ nano gh1-1.txt
 nano cdt-1.txt
 ```
 
-Right now, the example of the .txt files (need to remove the carriage returns, tabs, and space from the sequence part).
+Right now, the example of the .txt files (need to remove the carriage returns, tabs, and spaces from the sequence part).
 
 ```{bash}
-#keep the first line unchanged, and remove the newlines, carriage retuns, tab, and space from the rest.
+#keep the first line unchanged, and remove the newlines, carriage returns, tabs, and spaces from the rest.
 (head -n 1 gh1-1.txt && tail -n +2 gh1-1.txt | tr -d '\n\r\t ') > gh1-1_clean.txt
 ( head -n 1 gh1-1.txt && tail -n +2 gh1-1.txt | tr -d '\n\r\t ' ) > cdt-1_clean.txt
 ```
 
-Turn the .txt files into FASTA file (because the reference genome uses .fsa, in this case, it will stay as same as reference genome). The .txt files are already in FASTA format (header line starting with '\>' followed by sequence data), therefore can directly rename or copy it to convert the file. We will use a copy.
+Convert the .txt files to a FASTA file (because the reference genome uses .fsa; in this case, it will stay the same as the reference genome). The .txt files are already in FASTA format (header line starting with '\>' followed by sequence data); therefore, you can directly rename or copy them to convert the file. We will use a copy.
 
 ```{bash}
 cp gh1-1_clean.txt gh1-1.fsa
@@ -69,7 +69,7 @@ cp cdt-1_clean.txt cdt-1.fsa
 cat BY4742_Toronto_2012.fsa gh1-1.fsa cdt-1.fsa > combined_reference.fsa
 ```
 
-After running this command, an error occured -- When combining the files, the cdt-1 won't add in a new line, it just added at the last genome code of the gh1-1 sequence, that's because gh1-1.fsa doesn't end with a new line. Need to add a new line for combining.
+After running this command, an error occurred: when combining the files, the cdt-1 won't add a new line; it just appends to the last genome code of the gh1-1 sequence. That's because gh1-1.fsa doesn't end with a new line. Need to add a new line for combining.
 
 ```{bash}
 echo "" >> gh1-1.fsa 
@@ -88,17 +88,17 @@ grep -v "^>" combined_reference.fasta | tr -d '\n' | wc -c
 
 ## Create annotation file
 
-The annotation file of reference genome is downloaded from the same website as the reference genome FastQ file. Here, we need to create the annotation for both gh1-1 and cdt-1.
+The annotation file of the reference genome is downloaded from the same website as the reference genome FastQ file. Here, we need to create the annotation for both gh1-1 and cdt-1.
 
-Annotation file (.gff or .gtf) are tab delimited text files that describe the locations and structures of genes and other genomic features. This is made because when analysing the sequences data the software needs to be told:
+Annotation files (.gff or .gtf) are tab-delimited text files that describe the locations and structures of genes and other genomic features. This is made because when analysing the sequence data, the software needs to be told:
 
 1\. Where genes are located on each chromosome/sequence.
 
-2\. What parts are exon, introns and CDS (coding sequences).
+2\. What parts are the exons, introns and CDS (coding sequences)?
 
 3\. Gene names and IDs.
 
-Without an annotation file, the aligner won't know that what sequences contain genes, and some of the tools like HTSeq and featureCounts won't be able to count reads mapping to these genes. There are 9 tab-separated columns: Seqname, Source, feature, start, end, score, trand, frame, and attributes. To do this:
+Without an annotation file, the aligner won't know which sequences contain genes, and some tools, such as HTSeq and featureCounts, won't be able to count reads mapping to these genes. There are nine tab-separated columns: Seqname, Source, feature, start, end, score, trand, frame, and attributes. To do this:
 
 First, we need to calculate the length of sequences.
 
@@ -106,7 +106,7 @@ First, we need to calculate the length of sequences.
 GH1_LEN=$(grep -v "^>" gh1-1.fsa | tr -d '\n'|wc -c)
 CDT_LEN=$(grep -v "^>" cdt-1.fsa | tr -d '\n'|wc -c)
 
-# Check the length before make the annotation 
+# Check the length before making the annotation 
 echo "GH1-1 length: $GH1_LEN” #gh1-1 length: 2415
 echo "cdt-1 length: $CDT_LEN” #cdt-1 length: 3193
 
@@ -122,13 +122,13 @@ synthetic_cdt-1	manual	exon	1	$CDT_LEN	.	+	.	gene_id "CDT-1"; transcript_id "CDT
 EOF
 ```
 
-After making the annotation file of the insertion genome, we combine the insertion genome annotation and reference genome annotation.
+After generating the annotation file for the insertion genome, we combine it with the reference genome annotation.
 
 ```{bash}
 cat BY4742_Toronto_2012_annotation.gff transgenes.gff > combined_reference_annotation.gff
 ```
 
-But when checking the tail of the combined annotation file, there is some sequence information before gh1-1 and cdt-1. That’s because there is some sequences at the end of the reference one. Therefore need to remove the FASTA part in reference.
+But when checking the tail of the combined annotation file, there is some sequence information before gh1-1 and cdt-1. That’s because there are some sequences at the end of the reference one. Therefore, we need to remove the FASTA part in the reference.
 
 ```{bash}
 awk '/^##FASTA/ {exit} {print}' BY4742_Toronto_2012_annotation.gff > no_fasta_ref.gff
@@ -140,7 +140,7 @@ Then combine the files again.
 cat no_fasta_ref.gff transgenes.gff > combined_reference_annotation.gff 
 ```
 
-Then we have a whole annotation GFF file for all sequences.
+Then we have a single GFF file containing annotations for all sequences.
 
 ------------------------------------------------------------------------
 
@@ -223,13 +223,13 @@ done
 
 ### Trim and Filter Reads
 
-At first we trimmed by:
+At first, we trimmed by:
 
-1\. Removing first 4 bases.
+1\. Removing the first four bases.
 
-2\. Removing bases from the start of the read until the quality was greater or equal to three.
+2\. Removing bases from the start of the read until the quality was greater than or equal to three.
 
-3\. Removing bases from the end of the read until the quality greater or equal to three.
+3\. Removing bases from the end of the read until the quality is greater than or equal to three.
 
 4\. Cutting the reads when the average drops below Q20.
 
@@ -303,11 +303,11 @@ Then we check the fastqc_post result, but still have some reads in the red regio
 
 -   SRR1166446: Still has a peak in the red region.
 
-Therefore, we looked into the first FastQC result again and decided to trim the sequences separately with different rules.
+Therefore, we reexamined the first FastQC result and decided to trim the sequences separately using different rules.
 
 SRR1166442:
 
-1.  Remove first four bases.
+1.  Remove the first four bases.
 
 2.  Remove bases after 35.
 
@@ -315,25 +315,25 @@ SRR1166442:
 
 4.  Remove bases from the end of a read if their quality score is below five.
 
-5.  If the average quality in the window drop below 20, trim the read from that point onward.
+5.  If the average quality in the window drops below 20, trim the read from that point onward.
 
 6.  Drop reads shorter than 25 bases after trimming.
 
 -   SRR1166443:
 
-1.  Remove first four bases.
+1.  Remove the first four bases.
 2.  Remove bases after 38.
 3.  Remove bases from the start of a read if their quality score is below five.
 4.  Remove bases from the end of a read if their quality score is below five.
-5.  If the average quality in the window drop below twenty, trim the read from that point onward.
+5.  If the average quality in the window drops below twenty, trim the read from that point onward.
 6.  Drop reads shorter than 25 bases after trimming.
 
 -   SRR1166444:
 
-1.  Remove first four bases.
+1.  Remove the first four bases.
 2.  Remove bases from the start of a read if their quality score is below three.
 3.  Remove bases from the end of a read if their quality score is below three.
-4.  If the average quality in the window drop below twenty, trim the read from that point onward.
+4.  If the average quality in the window drops below twenty, trim the read from that point onward.
 5.  Drop reads shorter than 30 bases after trimming.
 
 ```{bash}
@@ -419,7 +419,7 @@ echo "Check FastQC results in: $FASTQC_POST"
 
 -   SRR1166445:
 
-1.  Remove first four bases.
+1.  Remove the first four bases.
 
 2.  Remove bases after 35.
 
@@ -427,13 +427,13 @@ echo "Check FastQC results in: $FASTQC_POST"
 
 4.  Remove bases from the end of a read if their quality score is below five.
 
-5.  If the average quality in the window drop below twenty, trim the read from that point onward.
+5.  If the average quality in the window drops below twenty, trim the read from that point onward.
 
 6.  Drop reads shorter than 25 bases after trimming.
 
 -   SRR1166446:
 
-1.  Remove first four bases.
+1.  Remove the first four bases.
 
 2.  Remove bases after 35.
 
@@ -441,16 +441,16 @@ echo "Check FastQC results in: $FASTQC_POST"
 
 4.  Remove bases from the end of a read if their quality score is below three.
 
-5.  If the average quality in the window drop below twenty, trim the read from that point onward.
+5.  If the average quality in the window drops below twenty, trim the read from that point onward.
 
 6.  Drop reads shorter than 30 bases after trimming.
 
 -   SRR1166447:
 
-1.  Remove first four bases.
+1.  Remove the first four bases.
 2.  Remove bases from the start of a read if their quality score is below three.
 3.  Remove bases from the end of a read if their quality score is below three.
-4.  If the average quality in the window drop below twenty, trim the read from that point onward.
+4.  If the average quality in the window drops below twenty, trim the read from that point onward.
 5.  Drop reads shorter than 30 bases after trimming.
 
 ```{bash}
@@ -534,7 +534,7 @@ echo "=========================================="
 echo "Check FastQC results in: $FASTQC_POST"
 ```
 
-Then we checked the FastQC result again and found that SRR1166442 and SRR1166445 still has some reads in the red region. So, we checked the location and trimmed again, this time by:
+Then we checked the FastQC result again and found that SRR1166442 and SRR1166445 still have some reads in the red region. So, we checked the location and trimmed again, this time by:
 
 -SRR1166442: Keep only location: 4-31
 
@@ -708,7 +708,7 @@ echo "Check FastQC results in: $FASTQC_POST"
 
 ### Align Reads to Reference
 
-First we need to build a Bowtie2 index for the reference genome, because Bowtie2 does not align reads directly to a raw FASTA file.
+First, we need to build a Bowtie2 index for the reference genome, because Bowtie2 does not align reads directly to a raw FASTA file.
 
 ```{bash}
 bowtie2-build combined_reference.fsa combined_reference.index 
@@ -866,7 +866,7 @@ Results for **SRR1166443**:
 0 + 0 duplicates
 0 + 0 primary duplicates
 40250654 + 0 mapped (97.77% : N/A) #40250654 successfully mapped
-40250654 + 0 primary mapped (97.77% : N/A)
+40250654 + 0 primary mapped (97.77%: N/A)
 0 + 0 paired in sequencing
 0 + 0 read1
 0 + 0 read2
@@ -886,8 +886,8 @@ Results for **SRR1166444:**
 0 + 0 supplementary
 0 + 0 duplicates
 0 + 0 primary duplicates
-31801525 + 0 mapped (97.49% : N/A)
-31801525 + 0 primary mapped (97.49% : N/A)
+31801525 + 0 mapped (97.49%: N/A)
+31801525 + 0 primary mapped (97.49%: N/A)
 0 + 0 paired in sequencing
 0 + 0 read1
 0 + 0 read2
@@ -910,8 +910,8 @@ Results for **SRR1166445:**
 0 + 0 supplementary
 0 + 0 duplicates
 0 + 0 primary duplicates
-40036266 + 0 mapped (96.47% : N/A)
-40036266 + 0 primary mapped (96.47% : N/A)
+40036266 + 0 mapped (96.47%: N/A)
+40036266 + 0 primary mapped (96.47%: N/A)
 0 + 0 paired in sequencing
 0 + 0 read1
 0 + 0 read2
@@ -931,8 +931,8 @@ Results for **SRR1166446:**
 0 + 0 supplementary
 0 + 0 duplicates
 0 + 0 primary duplicates
-33855054 + 0 mapped (97.24% : N/A)
-33855054 + 0 primary mapped (97.24% : N/A)
+33855054 + 0 mapped (97.24%: N/A)
+33855054 + 0 primary mapped (97.24%: N/A)
 0 + 0 paired in sequencing
 0 + 0 read1
 0 + 0 read2
@@ -952,8 +952,8 @@ Results for **SRR1166447:**
 0 + 0 supplementary
 0 + 0 duplicates
 0 + 0 primary duplicates
-31253210 + 0 mapped (96.85% : N/A)
-31253210 + 0 primary mapped (96.85% : N/A)
+31253210 + 0 mapped (96.85%: N/A)
+31253210 + 0 primary mapped (96.85%: N/A)
 0 + 0 paired in sequencing
 0 + 0 read1
 0 + 0 read2
@@ -1005,7 +1005,7 @@ OUTPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/Quantify_Gene_Expressi
 Annotation_DIR=/scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference
 mkdir -p  "$OUTPUT_DIR"
 
-echo "Starting to count the read per gene"
+echo "Starting to count the reads per gene"
 
 #-----SRR1166445-----
 echo "Counting SRR1166445"
@@ -1026,20 +1026,20 @@ htseq-count -f bam -r pos --idattr=Parent $INPUT_DIR/SRR1166447_sorted.bam $Anno
 echo "SRR1166447 complete"
 ```
 
-At first time to run the code, got error: error i got: Error occured when processing GFF file (line 10142 of file /scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/combined_reference_annotation.gff): unmatched quote \[Exception type: ValueError, raised in \_HTSeq.pyx:1597\];
+At first time to run the code, got error: Error occurred when processing GFF file (line 10142 of file /scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/combined_reference_annotation.gff): unmatched quote \[Exception type: ValueError, raised in \_HTSeq.pyx:1597\];
 
-That is because in annotation file, got a unexpected ‘“‘. Need to remove it !!
+That is because in the annotation file, I got an unexpected ‘“‘. Need to remove it !!
 
 ```{bash}
-# First check how it looks like in the 1042 line.
+# First check what it looks like in the 1042 line.
 nano +10142 combined_reference_annotation.gff 
-# See there has a unpaired quotation marks, then remove it 
+# See there a unpaired quotation marks, then remove it 
 sed '10142s/"//g' combined_reference_annotation.gff > cleaned.gff
-# Right now check there has no more unpaired quotation marks 
+# Right now, check that there are no more unpaired quotation marks 
 nano +10142 clean.gff
 ```
 
-Then run the script above again, error occurs: Error:Starting to count the read per gene Counting SRR1166445 Error occured when processing GFF file (line 16321 of file /scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/cleaned.gff): Feature GH1-1 does not contain a 'Parent' attribute \[Exception type: ValueError, raised in count.py:76\] SRR1166445 complete In this case, this is due to there has no parent info for the insertion genome therefore cannot run it. Then change to run by ID.
+Then run the script above again, error occurs: Error: Starting to count the read per gene Counting SRR1166445 Error occured when processing GFF file (line 16321 of file /scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/cleaned.gff): Feature GH1-1 does not contain a 'Parent' attribute \[Exception type: ValueError, raised in count.py:76\] SRR1166445 complete In this case, this is due to there has no parent info for the insertion genome therefore cannot run it. Then change to run by ID.
 
 ```{bash}
 #Using HTSeq
@@ -1055,7 +1055,7 @@ OUTPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/Quantify_Gene_Expressi
 Annotation_DIR=/scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference
 mkdir -p  "$OUTPUT_DIR"
 
-echo "Starting to count the read per gene"
+echo "Starting to count the reads per gene"
 
 #-----SRR1166445-----
 echo "Counting SRR1166445"
@@ -1076,13 +1076,13 @@ htseq-count -f bam -r pos --idattr=ID $INPUT_DIR/SRR1166447_sorted.bam $Annotati
 echo "SRR1166447 complete"
 ```
 
-Error occured again: Error occured when processing GFF file (line 13170 of file /scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/cleaned.gff): Feature snR48_BY4742 does not contain a 'ID' attribute \[Exception type: ValueError, raised in count.py:76\]
+Error occurred again: Error occurred when processing GFF file (line 13170 of file /scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/cleaned.gff): Feature snR48_BY4742 does not contain a 'ID' attribute \[Exception type: ValueError, raised in count.py:76\]
 
-This is becauase the ID is not in some of the lines. Changed to name, also got same error. Therefore, we realised that some are lacking in the insert genome and some in the reference genome. There are 2 option, one is to fill the ID or name, another is do the counting separately and add the result together to avoid editing the GFF for thousands of features and the “missing attribute” problem because each GFF uses the attribute it actually has.
+This is because the ID is not in some of the lines. Changed the name, also got the same error. Therefore, we realised that some are missing from the insert genome, and others from the reference genome. There are two options: either fill in the ID or name, or count separately and add the results to avoid editing the GFF for thousands of features and the “missing attribute” problem, since each GFF uses the attribute it actually has.
 
-We decided to run the Count Reads Per Gene separately, so we run them with the reference genome. This works because HTSeq-count counts reads per feature in a GFF file.
+We decided to run the Count Reads Per Gene separately, so we ran them with the reference genome. This works because HTSeq-count counts reads per feature in a GFF file.
 
-Think of --idattr as choosing a column name for counting: Reference GFF → Parent column Insert GFF → gene_id column HTSeq reads only that column. When merging, you just treat them all as “gene IDs” — it doesn’t matter which column was used in the original GFF.
+Think of --idattr as choosing a column name for counting: Reference GFF → Parent column Insert GFF → gene_id column HTSeq reads only that column. When merging, you treat them all as “gene IDs” — it doesn’t matter which column was used in the original GFF.
 
 ```{bash}
 #!/bin/bash 
@@ -1149,9 +1149,9 @@ echo "SRR1166447 insert genome complete"
 echo "All HTSeq-count jobs finished!"
 ```
 
-This code ran without errors. But when we normalised the result from HTSeq, the output from this script couldn't work due to no gene length file. Therefore, we re-wrote the script to run the HTSeq and normalisation together.
+This code ran without errors. But when we normalised the HTSeq results, the output from this script couldn't be used because a gene length file wasn't provided. Therefore, we re-wrote the script to run the HTSeq and normalisation together.
 
-This is to count reads per gene using HTSeq and then normalise the counts to CPM and RPKM. At first we extract gene length from the annotation files (reference + inserts), then we count the reads per gene using HTSeq-count. After than we normalised the counts to CPM and RPKM.
+This counts reads per gene using HTSeq and then normalises the counts to CPM and RPKM. At first, we extract gene lengths from the annotation files (reference and inserts), then we count reads per gene using HTSeq-count. After that, we normalised the counts to CPM and RPKM.
 
 ```{bash}
 #!/bin/bash
@@ -1312,3 +1312,221 @@ echo "Pipeline finished successfully!"
 ```
 
 ### 
+
+When processing the data visualisation, the output of the above script did not include 'TDH3, FBA1, CCW12', which are shown in the graph in the paper. Also, the normalised CSV files contain only 411 genes, whereas they’re supposed to contain more than 6000, so our plots wouldn’t match what's in the paper. 
+Need to double check the annotation file and the normalised CSV files. 
+
+```{bash}
+#Check of the normalised CSV files
+wc -l SRR116644*
+# Check specific gene in files
+grep 'TDH3' SRR116644*
+```
+- Cellobiose:
+    7 SRR1166445_insert_counts.txt
+  416 SRR1166445_ref_counts.txt
+    7 SRR1166446_insert_counts.txt
+  416 SRR1166446_ref_counts.txt
+    7 SRR1166447_insert_counts.txt
+  416 SRR1166447_ref_counts.txt
+ 1269 total
+
+- Glucose:
+    3 SRR1166442_insert_normalized.csv
+  412 SRR1166442_ref_normalized.csv
+    3 SRR1166443_insert_normalized.csv
+  412 SRR1166443_ref_normalized.csv
+    3 SRR1166444_insert_normalized.csv
+  412 SRR1166444_ref_normalized.csv
+ 1245 total
+
+- The specific genes do not occur in files. 
+Therefore, we checked the annotation files. 
+```{bash}
+grep 'TDH3' no_fasta_ref.gff
+```
+The specific genes are shown in the annotation files. Then we went through the scripts we have from the fastqc to the normalisation. 
+The issue is that in HTSeq, we used 'parent' or 'gene_id' for the '--idattr=' option. 'Parent' refers to the transcripts or exons, and 'gene_id' refers to genes.  
+The use of 'Parent' will lose many genes, as it only counts reads against transcript/exon parents. Therefore, we need to use 'gene' for '--idattr'. By doing this, we can combine the insertion and reference annotation files. 
+In the insertion file, the 'gene_id' needs to be replaced with 'ID=', and 'gene_name' needs to be replaced with 'gene=' to fit the reference annotation file. 
+
+```{bash}
+# Change the gene_id and gene_name in insertion annotation file
+sed -E -e 's/gene_id/ID=/' -e 's/gene_name/gene=/' transgenes.gff > transgenes_final.gff 
+# Combine the insertion annotation file and reference annotation file
+cat no_fasta_ref.gff transgenes_final.gff > combined.gff 
+```
+
+After changing the annotation 
+```{bash}
+#!/bin/bash
+#SBATCH --job-name=htseq_gene
+#SBATCH --output=htseq_gene.out
+#SBATCH --error=htseq_gene.err
+#SBATCH --time=04:00:00
+#SBATCH --mem=16G
+
+# -----------------------------
+# Load modules
+# -----------------------------
+module load py-htseq/0.11.2-gcc-13.2.0-python-3.11.6
+module load py-pandas/1.5.3-gcc-13.2.0-python-3.11.6
+
+# -----------------------------
+# Paths
+# -----------------------------
+INPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/alignment_results
+OUTPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/Quantify_Gene_Expression_changed
+mkdir -p "$OUTPUT_DIR"
+
+COMBINED_GFF=/scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/combined.gff
+GENE_LENGTHS="$OUTPUT_DIR/gene_lengths.csv"
+
+# -----------------------------
+# Extract gene lengths from GFF
+# -----------------------------
+python3 - <<EOF
+import pandas as pd
+
+COMBINED_GFF = "$COMBINED_GFF"
+GENE_LENGTHS = "$GENE_LENGTHS"
+
+lengths = []
+with open(COMBINED_GFF) as f:
+    for line in f:
+        if line.startswith("#"):
+            continue
+        parts = line.strip().split("\t")
+        if len(parts) < 9:
+            continue
+        if parts[2] != "gene":
+            continue
+        start, end = int(parts[3]), int(parts[4])
+        info = parts[8]
+        gene_id = None
+        for field in info.split(";"):
+            if field.startswith("gene="):
+                gene_id = field.split("=")[1]
+                break
+        if gene_id:
+            lengths.append((gene_id, end-start+1))
+
+df = pd.DataFrame(lengths, columns=["gene_id", "length_bp"])
+df.to_csv(GENE_LENGTHS, index=False)
+print(f"Gene lengths saved to {GENE_LENGTHS}")
+EOF
+
+# -----------------------------
+# HTSeq-count
+# -----------------------------
+SAMPLES=(SRR1166445 SRR1166446 SRR1166447)
+
+for SAMPLE in "${SAMPLES[@]}"; do
+    echo "Counting $SAMPLE ..."
+    htseq-count -f bam -r pos -s no -t gene --idattr=gene \
+        "$INPUT_DIR/${SAMPLE}_sorted.bam" \
+        "$COMBINED_GFF" \
+        > "$OUTPUT_DIR/${SAMPLE}_counts.txt"
+done
+
+# -----------------------------
+# Normalize CPM and RPKM
+# -----------------------------
+python3 - <<EOF
+import pandas as pd
+import os
+
+OUTPUT_DIR = "$OUTPUT_DIR"
+GENE_LENGTHS = "$GENE_LENGTHS"
+samples = ["SRR1166445", "SRR1166446", "SRR1166447"]
+
+lengths_df = pd.read_csv(GENE_LENGTHS, index_col=0)
+
+for s in samples:
+    file_path = os.path.join(OUTPUT_DIR, f"{s}_counts.txt")
+    df = pd.read_csv(file_path, sep="\t", header=None, names=["gene","count"], index_col=0)
+    
+    # Total reads for CPM
+    total_reads = df["count"].sum()
+    cpm = df["count"] / total_reads * 1e6
+    
+    # RPKM
+    matched_genes = df.index.intersection(lengths_df.index)
+    rpkm = (df.loc[matched_genes,"count"] * 1e9) / (total_reads * lengths_df.loc[matched_genes,"length_bp"])
+    
+    # Combine results
+    df_out = pd.DataFrame({"count": df["count"], "CPM": cpm})
+    df_out.loc[matched_genes,"RPKM"] = rpkm
+    df_out.to_csv(os.path.join(OUTPUT_DIR, f"{s}_normalized.csv"))
+
+print("CPM and RPKM calculation complete for all samples.")
+EOF
+
+echo "Pipeline finished successfully!"
+```
+
+When running this script, an error appears in the reference annotation file: one row does not contain the 'gene='. In that row, the gene name is not written as gene=, it is written as 'Name='. Therefore, we need to change it.
+
+```{bash}
+# Change the 'Name=' to 'gene='
+sed -E 's/;Name=([^;]+)/;gene=\1/' no_fasta_ref.gff > no_fasta_ref_change.gff
+# Double check the row is changed right now
+grep 'YAL018C_BY4742' no_fasta_ref_change.gff 
+# Combine two files again
+cat no_fasta_ref_change.gff transgenes_final.gff > combined.gff 
+```
+
+Then we ran the script above again and checked the normalisation files.
+```{bash}
+# Check the specific gene in the files
+grep 'TDH3' SRR116644*
+grep 'FBA1' SRR116644*
+grep 'CCW12' SRR116644*
+# Check the number of genes in the files
+wc -l SRR116644* 
+# Glucose: every sequence has 6606 lines
+# Cellobiose: every sequence has 6606 lines
+```
+- Glucose:
+SRR1166442_counts.txt:TDH3	212009
+SRR1166442_normalized.csv:TDH3,212009,5696.924344993027,
+SRR1166443_counts.txt:TDH3	250276
+SRR1166443_normalized.csv:TDH3,250276,6079.286797027204,
+SRR1166444_counts.txt:TDH3	239363
+SRR1166444_normalized.csv:TDH3,239363,7338.087313622015,
+
+SRR1166442_counts.txt:FBA1	282899
+SRR1166442_normalized.csv:FBA1,282899,7601.819735361151,
+SRR1166443_counts.txt:FBA1	304966
+SRR1166443_normalized.csv:FBA1,304966,7407.72498098978,
+SRR1166444_counts.txt:FBA1	251486
+SRR1166444_normalized.csv:FBA1,251486,7709.738874235141,
+
+SRR1166442_counts.txt:CCW12	148187
+SRR1166442_normalized.csv:CCW12,148187,3981.9541996400235,
+SRR1166443_counts.txt:CCW12	157164
+SRR1166443_normalized.csv:CCW12,157164,3817.5655283286587,
+SRR1166444_counts.txt:CCW12	129324
+SRR1166444_normalized.csv:CCW12,129324,3964.6511939892694,
+- Cellobiose:
+SRR1166445_counts.txt:TDH3	252099
+SRR1166445_normalized.csv:TDH3,252099,6074.405229396932,
+SRR1166446_counts.txt:TDH3	216649
+SRR1166446_normalized.csv:TDH3,216649,6222.846370354791,
+SRR1166447_counts.txt:TDH3	244021
+SRR1166447_normalized.csv:TDH3,244021,7561.641050971455,
+
+SRR1166445_counts.txt:FBA1	375128
+SRR1166445_normalized.csv:FBA1,375128,9038.827940187039,
+SRR1166446_counts.txt:FBA1	317821
+SRR1166446_normalized.csv:FBA1,317821,9128.827071772916,
+SRR1166447_counts.txt:FBA1	301024
+SRR1166447_normalized.csv:FBA1,301024,9328.030930647901,
+
+SRR1166445_counts.txt:CCW12	250684
+SRR1166445_normalized.csv:CCW12,250684,6040.310356352626,
+SRR1166446_counts.txt:CCW12	188070
+SRR1166446_normalized.csv:CCW12,188070,5401.966853632492,
+SRR1166447_counts.txt:CCW12	196112
+SRR1166447_normalized.csv:CCW12,196112,6077.052998668615,
+
