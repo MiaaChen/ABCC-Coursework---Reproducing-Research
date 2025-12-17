@@ -1313,8 +1313,8 @@ echo "Pipeline finished successfully!"
 
 ### 
 
-When processing the data visualisation, the output of the above script did not include 'TDH3, FBA1, CCW12', which are shown in the graph in the paper. Also, the normalised CSV files contain only 411 genes, whereas they’re supposed to contain more than 6000, so our plots wouldn’t match what's in the paper. 
-Need to double check the annotation file and the normalised CSV files. 
+When processing the data visualisation, the output of the above script did not include 'TDH3, FBA1, CCW12', which are shown in the paper's graph. Also, the normalised CSV files contain only 411 genes, whereas they’re supposed to contain more than 6000, so our plots wouldn’t match what's in the paper. 
+Need to double-check the annotation file and the normalised CSV files. 
 
 ```{bash}
 #Check of the normalised CSV files
@@ -1477,6 +1477,8 @@ cat no_fasta_ref_change.gff transgenes_final.gff > combined.gff
 ```
 
 Then we ran the script above again and checked the normalisation files.
+This is a bash script that extracts gene lengths from a GFF file and saves them into a CSV using Python.
+We asked to open the GFF file and read it line by line, skip when we met comments (#), lines with fewer than nine columns, features that are not gene.
 ```{bash}
 # Check the specific gene in the files
 grep 'TDH3' SRR116644*
@@ -1487,6 +1489,189 @@ wc -l SRR116644*
 # Glucose: every sequence has 6606 lines
 # Cellobiose: every sequence has 6606 lines
 ```
+
 After this script, we found out that we only have the cpm, not the RPKM.
 Therefore, we broke down the script part by part to double-check the problem.
+For extracting the gene length from the annotation file, before we used gene_id to label the row data, and then we used gene in the '--idattr' function. To make sure this is not the issue, changed to use the gene length. 
+First, we calculated the gene length from the annotation file. 
+Then, it extracted all gene features, calculated the length of each gene in base pairs, and saved the output as a CSV file. With columns: gene and length_bp.
+```{bash}
+#!/bin/bash
 
+#-----load modules-----
+module load py-htseq/0.11.2-gcc-13.2.0-python-3.11.6
+module load py-pandas/1.5.3-gcc-13.2.0-python-3.11.6
+
+#-----paths-----
+GFF=/scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/combined.gff
+GENE_LEN=/scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/gene_lengths.csv
+
+#-----Extract gene length from GFF-----
+python3 - <<EOF
+import pandas as pd
+
+gff = "$GFF"
+out = "$GENE_LEN"
+
+records = []
+
+with open(gff) as f:
+    for line in f:
+        if line.startswith("#"):
+            continue
+        cols = line.strip().split("\t")
+        if len(cols) < 9:
+            continue
+        if cols[2] != "gene":
+            continue
+
+        start, end = int(cols[3]), int(cols[4])
+        attrs = dict(
+            field.split("=", 1)
+            for field in cols[8].split(";")
+            if "=" in field
+        )
+
+        # MATCH htseq --idattr=gene
+        if "gene" in attrs:
+            gene = attrs["gene"]
+            records.append((gene, end - start + 1))
+
+df = pd.DataFrame(records, columns=["gene", "length_bp"])
+df = df.drop_duplicates(subset="gene").set_index("gene")
+df.to_csv(out)
+
+print(f"Gene lengths saved to {out}")
+EOF
+```
+
+Then, we ran the HTSeq to count the alignment results and normalisation. 
+In this script, we did not calculate the cpm as before; we only calculated the RPKM.
+```{bash}
+#!/bin/bash
+#SBATCH --job-name=htseq_rpkm
+#SBATCH --output=htseq_rpkm.out
+#SBATCH --error=htseq_rpkm.err
+#SBATCH --time=04:00:00
+#SBATCH --mem=16G
+
+#-----load modules-----
+module load py-htseq/0.11.2-gcc-13.2.0-python-3.11.6
+module load py-pandas/1.5.3-gcc-13.2.0-python-3.11.6
+
+#-----paths-----
+INPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/alignment_results
+OUTPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/HTSeq_results
+mkdir -p "$OUTPUT_DIR"
+
+COMBINED_GFF=/scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/combined.gff
+GENE_LENGTHS=/scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/gene_lengths.csv
+
+#-----HTSeq-count-----
+SAMPLES=(SRR1166445 SRR1166446 SRR1166447)
+
+for SAMPLE in "${SAMPLES[@]}"; do
+    echo "Counting $SAMPLE ..."
+    htseq-count -f bam -r pos -s no -t gene --idattr=gene \
+        "$INPUT_DIR/${SAMPLE}_sorted.bam" \
+        "$COMBINED_GFF" \
+        > "$OUTPUT_DIR/${SAMPLE}_counts.txt"
+done
+
+#-----Normalize RPKM------
+python3 - <<EOF
+import pandas as pd
+import os
+
+OUTPUT_DIR = "$OUTPUT_DIR"
+GENE_LENGTHS = "$GENE_LENGTHS"
+samples = ["SRR1166445", "SRR1166446", "SRR1166447"]
+
+# Read gene lengths
+lengths_df = pd.read_csv(GENE_LENGTHS, index_col=0)
+
+for s in samples:
+    file_path = os.path.join(OUTPUT_DIR, f"{s}_counts.txt")
+    
+    # Read HTSeq counts
+    df = pd.read_csv(file_path, sep="\t", header=None, names=["gene","count"], index_col=0)
+    
+    # Total reads
+    total_reads = df["count"].sum()
+    
+    # Initialise output DataFrame with counts
+    df_out = pd.DataFrame({"count": df["count"]})
+    
+    # Calculate RPKM for genes that have length information
+    matched_genes = df.index.intersection(lengths_df.index)
+    df_out["RPKM"] = pd.NA
+    if not matched_genes.empty:
+        rpkm = (df.loc[matched_genes, "count"] * 1e9) / (total_reads * lengths_df.loc[matched_genes, "length_bp"])
+        df_out.loc[matched_genes, "RPKM"] = rpkm
+
+    # Save output
+    df_out.to_csv(os.path.join(OUTPUT_DIR, f"{s}_normalized.csv"))
+
+EOF
+
+echo "Pipeline finished successfully!"
+```
+
+Then we downloaded the output from the HTSeq script, and went onto the R-studio to combine the files into one. 
+```{r}
+getwd()
+dir_g <- "./Glucose/HTSeq_results/"
+# List normalized files
+g_files <- list.files(path=dir_g,pattern = "_normalized.csv")
+test<-read.csv("Glucose/HTSeq_results/SRR1166442_normalized.csv", header=FALSE)
+test<-test[-1,]
+sum <- grepl("^__",test[,1])
+test_c <-test[!sum, ]
+gene<-test_c[,1]
+test<-test[,2]
+
+g_files <- list.files(path="./Glucose/HTSeq_results/", pattern="*_normalized.csv", full.names = TRUE, recursive=FALSE)
+the_files_g <- data.frame(gene=gene, stringsAsFactors = TRUE)
+
+for (i in g_files){
+  the_file_g <- as.data.frame(read.csv(i, header = F, stringsAsFactors = F))
+  the_file_g <- the_file_g[-1,] #remove the column name
+  sum_rows<-grepl("^__",the_file_g[,1])#Remove the HTSeq summary rows
+  the_file_g <- the_file_g[!sum_rows, ]
+  rpkm <- the_file_g[,3] #extra the rpkm value 
+  sample_name <- sub("_normalized.csv", "", basename(i))
+  the_files_g[[sample_name]] <- rpkm
+}
+dir_c <- "./Cellobiose/HTSeq_results/"
+c_files <-list.files(path = dir_c, pattern = "*_normalized.csv", full.names = TRUE, recursive = FALSE)
+the_files_c <- data.frame(gene=gene, stringsAsFactors = T)
+for (m in c_files){
+  the_file_c <- as.data.frame(read.csv(m, header = F, stringsAsFactors = F))
+  the_file_c <- the_file_c[-1,]
+  sum_rows_c <- grepl("^__", the_file_c[,1])
+  the_file_c <- the_file_c[!sum_rows_c, ]
+  rpkm_c <- the_file_c[,3]
+  sample_name_c <- sub("_normalized.csv", "",basename(m))
+  the_files_c[[sample_name_c]] <- rpkm_c
+}
+
+com_file_c <- the_files_c[,-1]
+all_file <- cbind(the_files_g,com_file_c)
+
+colnames(all_file) <- c("gene", "JCYL001B", "JCYL002B", "JCYL003B", "JCTL001D", "JCYL002D", "JCYL003D")
+
+write.csv(all_file, "Combined_RPKM.csv", row.names = FALSE)
+```
+
+Cause we also got an Excel file from the paper; it also has means for three Glucose samples and means for three Cellobiose samples. 
+```{r}
+#Calculate means
+data <- read.csv("Combined_RPKM.csv", header = T)
+data$Mean_B <- rowMeans(data[,c("JCYL001B", "JCYL002B", "JCYL003B")], na.rm = T)
+data$Mean_D <- rowMeans(data[, c("JCTL001D", "JCYL002D", "JCYL003D")], na.rm = T)
+colnames(data)
+data <- data[, c("gene", "JCYL001B", "JCYL002B", "JCYL003B", "Mean_B", 
+                 "JCTL001D", "JCYL002D", "JCYL003D", "Mean_D")]
+print(data)
+write.csv(data, "combined_with_means.csv", row.names = FALSE)
+```
