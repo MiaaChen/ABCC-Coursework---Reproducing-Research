@@ -1599,12 +1599,14 @@ EOF
 echo "Pipeline finished successfully!"
 ```
 
-Then we downloaded the output from the HTSeq script and went to RStudio to combine the files into one. In this script: 1. Reads all normalised HTSeq files for Glucose and Cellobiose. 2. Removes HTSeq summary rows (\_\_\*). 3. Extracts RPKM values. 4. Combines them into one table with proper column names. 5. Calculates mean RPKM per condition. 6. Saves the final combined dataset for downstream analysis.
+## Statistics demonstrate that engineering transcription factors significantly improves cellobiose fermentation performance in yeast.
+Then we downloaded the output from the HTSeq script and opened it in RStudio to combine the files. In this script: 1. Reads all normalised HTSeq files for Glucose and Cellobiose. 2. Removes HTSeq summary rows (\_\_\*). 3. Extracts RPKM values. 4. Combines them into one table with proper column names. 5. Calculates mean RPKM per condition. 6. Saves the final combined dataset for downstream analysis.
 
+### Preparation of the data
 ```{r}
 getwd()
 dir_g <- "./Glucose/HTSeq_results/"
-# List normalized files
+# List normalised files
 g_files <- list.files(path=dir_g,pattern = "_normalized.csv")
 test<-read.csv("Glucose/HTSeq_results/SRR1166442_normalized.csv", header=FALSE)
 test<-test[-1,]
@@ -1646,8 +1648,9 @@ colnames(all_file) <- c("gene", "JCYL001B", "JCYL002B", "JCYL003B", "JCTL001D", 
 write.csv(all_file, "Combined_RPKM.csv", row.names = FALSE)
 ```
 
-Cause we also got an Excel file from the paper, it also has means for three Glucose samples and means for three Cellobiose samples.
+Cause we also got an Excel file from the paper, it also has means for three Glucose samples and three Cellobiose samples.
 
+### Calculate the means
 ```{r}
 #Calculate means
 data <- read.csv("Combined_RPKM.csv", header = T)
@@ -1660,6 +1663,7 @@ print(data)
 write.csv(data, "combined_with_means.csv", row.names = FALSE)
 ```
 
+### Preparation of data for: ANOVA + Tukey test
 To run the statistical part at the end of the paper, we need to restructure the file. The script takes your wide-format RPKM data, reshapes it into a long/tidy format, extracts experimental metadata (strain, replicate, condition), converts relevant columns to factors, and saves it as a new CSV for ANOVA analysis.
 
 ```{r}
@@ -1708,7 +1712,8 @@ long_data <- long_data %>%
 write.csv(long_data, "Doc_for_ANOVA.csv", row.names = F)
 ```
 
-Then we can run the ANOVA test and Tukey test. The script automates gene-wise ANOVA analyses, calculates descriptive stats, runs post-hoc Tukey tests, and produces comprehensive summary tables for all genes.
+### ANOVA and Tukey test
+Then we can run the ANOVA and Tukey tests. The script automates gene-wise ANOVA analyses, calculates descriptive stats, runs post-hoc Tukey tests, and produces comprehensive summary tables for all genes.
 
 ```{r}
 library(tidyverse)
