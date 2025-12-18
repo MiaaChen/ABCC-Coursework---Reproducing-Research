@@ -1,0 +1,2233 @@
+---
+title: "ABCC_Coursework"
+format: html
+editor: visual
+---
+
+# Group Project ABCC
+
+------------------------------------------------------------------------
+
+## Obtaining Raw Data
+
+### Downloading Raw Sequencing Files
+
+```{bash}
+#make directory to download FASTQ files into
+mkdir /scratch/grp/msc_appbio/Group8_ABCC
+
+#downloading raw sequencing files from NCBI Expression Omnibus (accession no.GSE54825)
+wget ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR116/003/SRR1166443/SRR1166443.fastq.gz 
+#repeated for each of six FASTQ files: SRR1166442, SRR1166443, SRR116644, SRR1166445, SRR1166446, SRR1166447
+
+#unzipped all the files
+gzip -d SRR1166447.fastq.gz 
+
+#organised sequencing files based on their conditions
+mkdir Glucose
+mkdir Cellobiose
+```
+
+### Downloading Reference Genome
+
+Downloaded from <https://www.yeastgenome.org/>
+
+```{bash}
+wget http://sgd-archive.yeastgenome.org/sequence/strains/BY4742/BY4742_Toronto_2012/BY4742_Toronto_2012.fsa.gz
+
+```
+
+For the insertion sequences (gh1-1 & cdt-1); get on ncbi then copy and paste onto txt files.
+
+gh1-1: <https://www.ncbi.nlm.nih.gov/nuccore/NC_026503.1?report=fasta&from=2730966&to=2733380&strand=true>
+
+cdt-1: <https://www.ncbi.nlm.nih.gov/nuccore/NC_026501.1?report=fasta&from=7121829&to=7125021&strand=true>
+
+```{bash}
+nano gh1-1.txt
+nano cdt-1.txt
+```
+
+Right now, the example of the .txt files (need to remove the carriage returns, tabs, and spaces from the sequence part).
+
+```{bash}
+#keep the first line unchanged, and remove the newlines, carriage returns, tabs, and spaces from the rest.
+(head -n 1 gh1-1.txt && tail -n +2 gh1-1.txt | tr -d '\n\r\t ') > gh1-1_clean.txt
+( head -n 1 gh1-1.txt && tail -n +2 gh1-1.txt | tr -d '\n\r\t ' ) > cdt-1_clean.txt
+```
+
+Convert the .txt files to a FASTA file (because the reference genome uses .fsa; in this case, it will stay the same as the reference genome). The .txt files are already in FASTA format (header line starting with '\>' followed by sequence data); therefore, you can directly rename or copy them to convert the file. We will use a copy.
+
+```{bash}
+cp gh1-1_clean.txt gh1-1.fsa
+cp cdt-1_clean.txt cdt-1.fsa
+```
+
+### Creating Custom Reference:
+
+```{bash}
+cat BY4742_Toronto_2012.fsa gh1-1.fsa cdt-1.fsa > combined_reference.fsa
+```
+
+After running this command, an error occurred: when combining the files, the cdt-1 won't add a new line; it just appends to the last genome code of the gh1-1 sequence. That's because gh1-1.fsa doesn't end with a new line. Need to add a new line for combining.
+
+```{bash}
+echo "" >> gh1-1.fsa 
+```
+
+Then combine all three files again.
+
+```{bash}
+cat BY4742_Toronto_2012.fsa gh1-1.fsa cdt-1.fsa > combined_reference.fsa
+# Can use this to check the combination 
+grep "^>" combined_reference.fasta
+# Use this to check the size 
+grep -v "^>" combined_reference.fasta | tr -d '\n' | wc -c
+# 12,147,068
+```
+
+## Create annotation file
+
+The annotation file of the reference genome is downloaded from the same website as the reference genome FastQ file. Here, we need to create the annotation for both gh1-1 and cdt-1.
+
+Annotation files (.gff or .gtf) are tab-delimited text files that describe the locations and structures of genes and other genomic features. This is made because when analysing the sequence data, the software needs to be told:
+
+1\. Where genes are located on each chromosome/sequence.
+
+2\. What parts are the exons, introns and CDS (coding sequences)?
+
+3\. Gene names and IDs.
+
+Without an annotation file, the aligner won't know which sequences contain genes, and some tools, such as HTSeq and featureCounts, won't be able to count reads mapping to these genes. There are nine tab-separated columns: Seqname, Source, feature, start, end, score, trand, frame, and attributes. To do this:
+
+First, we need to calculate the length of sequences.
+
+```{bash}
+GH1_LEN=$(grep -v "^>" gh1-1.fsa | tr -d '\n'|wc -c)
+CDT_LEN=$(grep -v "^>" cdt-1.fsa | tr -d '\n'|wc -c)
+
+# Check the length before making the annotation 
+echo "GH1-1 length: $GH1_LEN” #gh1-1 length: 2415
+echo "cdt-1 length: $CDT_LEN” #cdt-1 length: 3193
+
+# Create the GFF file:
+Create the GFF file:
+cat > transgenes.gff << EOF
+synthetic_gh1-1	manual	gene	1	$GH1_LEN	.	+	.	gene_id "GH1-1"; gene_name "gh1-1";
+synthetic_gh1-1	manual	transcript	1	$GH1_LEN	.	+	.	gene_id "GH1-1"; transcript_id "GH1-1_mRNA";
+synthetic_gh1-1	manual	exon	1	$GH1_LEN	.	+	.	gene_id "GH1-1"; transcript_id "GH1-1_mRNA";
+synthetic_cdt-1	manual	gene	1	$CDT_LEN	.	+	.	gene_id "CDT-1"; gene_name "cdt-1";
+synthetic_cdt-1	manual	transcript	1	$CDT_LEN	.	+	.	gene_id "CDT-1"; transcript_id "CDT-1_mRNA";
+synthetic_cdt-1	manual	exon	1	$CDT_LEN	.	+	.	gene_id "CDT-1"; transcript_id "CDT-1_mRNA";
+EOF
+```
+
+After generating the annotation file for the insertion genome, we combine it with the reference genome annotation.
+
+```{bash}
+cat BY4742_Toronto_2012_annotation.gff transgenes.gff > combined_reference_annotation.gff
+```
+
+But when checking the tail of the combined annotation file, there is some sequence information before gh1-1 and cdt-1. That’s because there are some sequences at the end of the reference one. Therefore, we need to remove the FASTA part in the reference.
+
+```{bash}
+awk '/^##FASTA/ {exit} {print}' BY4742_Toronto_2012_annotation.gff > no_fasta_ref.gff
+```
+
+Then combine the files again.
+
+```{bash}
+cat no_fasta_ref.gff transgenes.gff > combined_reference_annotation.gff 
+```
+
+Then we have a single GFF file containing annotations for all sequences.
+
+------------------------------------------------------------------------
+
+## Quality Control (QC)
+
+```{bash}
+#!/bin/bash
+module load fastqc
+mkdir -p fastqc_results
+
+for file in *.fastq; do
+    if [[ -f "$file" ]]; then
+        echo "Running FastQC on $file"
+        fastqc "$file" -o fastqc_results -t 4
+    fi
+done 
+```
+
+### Assess Read Quality
+
+-   SRR1166442:
+
+    Sequence length: 50, total sequences: 40,585,197
+
+    Quality score at read end: \[orange/red\]  trim first 4, and last 36 onwards…
+
+    Adapters detected: \[No\]
+
+    Any overrepresented sequences: \[No\]
+
+-   SRR1166443:
+
+    Sequence length: 50, total sequences: 44,937,781
+
+    Quality score at read end: \[orange/red\]  trim first 3, and last 39 onwards…
+
+    Adapters detected: \[No\]
+
+    Any overrepresented sequences: \[No\]
+
+-   SRR1166444:
+
+    Sequence length: 50, total sequences: 34,778,661
+
+    Quality score at read end:\[Good\] 
+
+    Adapters detected: \[No\]
+
+    Any overrepresented sequences: \[No\]
+
+-   SRR1166445: 
+
+    Sequence length: 50, total sequences: 45,543,917
+
+    Quality score at read end: \[orange/red\]  trim first 4, and last 36 onwards…
+
+    Adapters detected: \[No\]
+
+    Any overrepresented sequences: \[No\]
+
+-   SRR1166446: 
+
+    Sequence length: 50, total sequences: 38,223,389
+
+    Quality score at read end: \[orange/red\]  trim first 4, and last 36 onwards…
+
+    Adapters detected: \[No\]
+
+    Any overrepresented sequences: \[No\]
+
+-   SRR1166447: 
+
+    Sequence length: 50, total sequences: 34,542,268
+
+    Quality score at read end: \[Good\] 
+
+    Adapters detected: \[No\]
+
+    Any overrepresented sequences: \[No\]
+
+### Trim and Filter Reads
+
+At first, we trimmed by:
+
+1\. Removing the first four bases.
+
+2\. Removing bases from the start of the read until the quality was greater than or equal to three.
+
+3\. Removing bases from the end of the read until the quality is greater than or equal to three.
+
+4\. Cutting the reads when the average drops below Q20.
+
+5\. If the read is shorter than 30 bp, drop the read.
+
+After trimming the sequences, we ran another FastQC test to check the quality post-trimming.
+
+```{bash}
+#!/bin/bash
+module load trimmomatic 
+module load fastqc
+
+# Set directories
+INPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose           # Change to where your FASTQ files are
+OUTPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiosetrimmed_results
+FASTQC_POST=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiosefastqc_post
+
+# Create necessary directories
+mkdir -p "$OUTPUT_DIR"
+mkdir -p "$FASTQC_POST"
+
+# List of samples
+SAMPLES=("SRR1166445" "SRR1166446" "SRR1166447")
+
+# Loop through samples
+for SAMPLE in "${SAMPLES[@]}"; do
+    INPUT_FILE="$INPUT_DIR/${SAMPLE}.fastq"
+    OUTPUT_FILE="$OUTPUT_DIR/${SAMPLE}_trimmed.fastq"
+
+    echo "=========================================="
+    echo "Processing $SAMPLE..."
+
+    # Check if input exists and is readable
+    if [[ ! -r "$INPUT_FILE" ]]; then
+        echo "ERROR: Input file $INPUT_FILE not found or not readable. Skipping $SAMPLE."
+        continue
+    fi
+
+    # Run Trimmomatic SE
+    trimmomatic SE -phred33 \
+        "$INPUT_FILE" \
+        "$OUTPUT_FILE" \
+        # The trimming rules
+        HEADCROP:4 \
+        LEADING:3 \
+        TRAILING:3 \
+        SLIDINGWINDOW:4:20 \
+        MINLEN:30
+
+    # Check if trimming succeeded
+    if [[ -f "$OUTPUT_FILE" ]]; then
+        echo "$SAMPLE trimming complete: $OUTPUT_FILE"
+    else
+        echo "ERROR: Trimming failed for $SAMPLE"
+    fi
+done
+
+echo "=========================================="
+echo "Running FastQC on trimmed reads..."
+fastqc "$OUTPUT_DIR"/*_trimmed.fastq -o "$FASTQC_POST" -t 3
+
+echo "All trimming and FastQC complete!"
+echo "Check FastQC results in: $FASTQC_POST"
+```
+
+Then we check the fastqc_post result, but still have some reads in the red region.
+
+-   SRR1166442: Still has a peak in the red region.
+
+<!-- -->
+
+-   SRR1166446: Still has a peak in the red region.
+
+Therefore, we reexamined the first FastQC result and decided to trim the sequences separately using different rules.
+
+SRR1166442:
+
+1.  Remove the first four bases.
+
+2.  Remove bases after 35.
+
+3.  Remove bases from the start of a read if their quality score is below five.
+
+4.  Remove bases from the end of a read if their quality score is below five.
+
+5.  If the average quality in the window drops below 20, trim the read from that point onward.
+
+6.  Drop reads shorter than 25 bases after trimming.
+
+-   SRR1166443:
+
+1.  Remove the first four bases.
+2.  Remove bases after 38.
+3.  Remove bases from the start of a read if their quality score is below five.
+4.  Remove bases from the end of a read if their quality score is below five.
+5.  If the average quality in the window drops below twenty, trim the read from that point onward.
+6.  Drop reads shorter than 25 bases after trimming.
+
+-   SRR1166444:
+
+1.  Remove the first four bases.
+2.  Remove bases from the start of a read if their quality score is below three.
+3.  Remove bases from the end of a read if their quality score is below three.
+4.  If the average quality in the window drops below twenty, trim the read from that point onward.
+5.  Drop reads shorter than 30 bases after trimming.
+
+```{bash}
+#!/bin/bash
+
+module load trimmomatic
+module load fastqc
+
+# Set directories
+INPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Glucose
+OUTPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Glucose/trimmed_changed_results
+FASTQC_POST=/scratch/grp/msc_appbio/Group8_ABCC/Glucose/fastqc_post_changed
+
+mkdir -p "$OUTPUT_DIR"
+mkdir -p "$FASTQC_POST"
+
+echo "Starting trimming for all samples"
+
+###############################################
+# SRR1166442
+###############################################
+echo "Trimming SRR1166442..."
+trimmomatic SE -phred33 \
+$INPUT_DIR/SRR1166442.fastq \
+$OUTPUT_DIR/SRR1166442_trimmed.fastq \
+HEADCROP:4 \
+CROP:35 \
+LEADING:5 \
+TRAILING:5 \
+SLIDINGWINDOW:4:20 \
+MINLEN:25
+
+echo "SRR1166442 complete."
+
+
+###############################################
+# SRR1166443
+###############################################
+echo "Trimming SRR1166443..."
+trimmomatic SE -phred33 \
+$INPUT_DIR/SRR1166443.fastq \
+$OUTPUT_DIR/SRR1166443_trimmed.fastq \
+HEADCROP:4 \
+CROP:38 \
+LEADING:5 \
+TRAILING:5 \
+SLIDINGWINDOW:4:20 \
+MINLEN:25
+
+echo "SRR1166443 complete."
+
+
+###############################################
+# SRR1166444
+###############################################
+echo "Trimming SRR1166444..."
+trimmomatic SE -phred33 \
+$INPUT_DIR/SRR1166444.fastq \
+$OUTPUT_DIR/SRR1166444_trimmed.fastq \
+HEADCROP:4 \
+LEADING:3 \
+TRAILING:3 \
+SLIDINGWINDOW:4:20 \
+MINLEN:30
+
+echo "SRR1166444 complete"
+
+
+###############################################
+# FASTQC
+###############################################
+echo "All trimming complete! Running FastQC on trimmed reads..."
+fastqc $OUTPUT_DIR/*_trimmed.fastq -o $FASTQC_POST -t 3
+
+echo "=========================================="
+echo "Trimming Summary:"
+echo "SRR1166442: Trimmed first 4bp, kept bp 5-35 (~31bp reads)"
+echo "SRR1166443: Trimmed first 4bp, kept bp 5-35 (~31bp reads)"
+echo "SRR1166444: Trimmed first 4bp, light quality filtering (~46bp reads)"
+echo "=========================================="
+echo "Check FastQC results in: $FASTQC_POST"
+```
+
+-   SRR1166445:
+
+1.  Remove the first four bases.
+
+2.  Remove bases after 35.
+
+3.  Remove bases from the start of a read if their quality score is below five.
+
+4.  Remove bases from the end of a read if their quality score is below five.
+
+5.  If the average quality in the window drops below twenty, trim the read from that point onward.
+
+6.  Drop reads shorter than 25 bases after trimming.
+
+-   SRR1166446:
+
+1.  Remove the first four bases.
+
+2.  Remove bases after 35.
+
+3.  Remove bases from the start of a read if their quality score is below three.
+
+4.  Remove bases from the end of a read if their quality score is below three.
+
+5.  If the average quality in the window drops below twenty, trim the read from that point onward.
+
+6.  Drop reads shorter than 30 bases after trimming.
+
+-   SRR1166447:
+
+1.  Remove the first four bases.
+2.  Remove bases from the start of a read if their quality score is below three.
+3.  Remove bases from the end of a read if their quality score is below three.
+4.  If the average quality in the window drops below twenty, trim the read from that point onward.
+5.  Drop reads shorter than 30 bases after trimming.
+
+```{bash}
+#!/bin/bash
+
+module load trimmomatic
+module load fastqc
+
+# Set directories
+INPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose
+OUTPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/trimmed_changed_results
+FASTQC_POST=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/fastqc_post_changed
+
+mkdir -p "$OUTPUT_DIR"
+mkdir -p "$FASTQC_POST"
+
+echo "Starting trimming for all samples"
+
+###############################################
+# SRR1166445
+###############################################
+echo "Trimming SRR1166445..."
+trimmomatic SE -phred33 \
+$INPUT_DIR/SRR1166445.fastq \
+$OUTPUT_DIR/SRR1166445_trimmed.fastq \
+HEADCROP:4 \
+CROP:35 \
+LEADING:5 \
+TRAILING:5 \
+SLIDINGWINDOW:4:20 \
+MINLEN:25
+
+echo "SRR1166445 complete."
+
+
+###############################################
+# SRR1166446
+###############################################
+echo "Trimming SRR1166446..."
+trimmomatic SE -phred33 \
+$INPUT_DIR/SRR1166446.fastq \
+$OUTPUT_DIR/SRR1166446_trimmed.fastq \
+HEADCROP:4 \
+CROP:35 \
+LEADING:5 \
+TRAILING:5 \
+SLIDINGWINDOW:4:20 \
+MINLEN:25
+
+echo "SRR1166446 complete."
+
+
+###############################################
+# SRR1166447
+###############################################
+echo "Trimming SRR1166447..."
+trimmomatic SE -phred33 \
+$INPUT_DIR/SRR1166447.fastq \
+$OUTPUT_DIR/SRR1166447_trimmed.fastq \
+HEADCROP:4 \
+LEADING:3 \
+TRAILING:3 \
+SLIDINGWINDOW:4:20 \
+MINLEN:30
+
+echo "SRR1166447 complete"
+
+
+###############################################
+# FASTQC
+###############################################
+echo "All trimming complete! Running FastQC on trimmed reads..."
+fastqc $OUTPUT_DIR/*_trimmed.fastq -o $FASTQC_POST -t 3
+
+echo "=========================================="
+echo "Trimming Summary:"
+echo "SRR1166445: Trimmed first 4bp, kept bp 5-35 (~31bp reads)"
+echo "SRR1166446: Trimmed first 4bp, kept bp 5-35 (~31bp reads)"
+echo "SRR1166447: Trimmed first 4bp, light quality filtering (~46bp reads)"
+echo "=========================================="
+echo "Check FastQC results in: $FASTQC_POST"
+```
+
+Then we checked the FastQC result again and found that SRR1166442 and SRR1166445 still have some reads in the red region. So, we checked the location and trimmed again, this time by:
+
+-SRR1166442: Keep only location: 4-31
+
+```{bash}
+#!/bin/bash
+
+module load trimmomatic
+module load fastqc
+
+# Set directories
+INPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Glucose
+OUTPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Glucose/trimmed_changed_results_2
+FASTQC_POST=/scratch/grp/msc_appbio/Group8_ABCC/Glucose/fastqc_post_changed_2
+
+mkdir -p "$OUTPUT_DIR"
+mkdir -p "$FASTQC_POST"
+
+echo "Starting trimming for all samples"
+
+###############################################
+# SRR1166442
+###############################################
+echo "Trimming SRR1166442..."
+trimmomatic SE -phred33 \
+$INPUT_DIR/SRR1166442.fastq \
+$OUTPUT_DIR/SRR1166442_trimmed.fastq \
+HEADCROP:4 \
+CROP:31 \
+LEADING:5 \
+TRAILING:5 \
+SLIDINGWINDOW:4:20 \
+MINLEN:25
+
+echo "SRR1166442 complete."
+
+
+###############################################
+# SRR1166443
+###############################################
+echo "Trimming SRR1166443..."
+trimmomatic SE -phred33 \
+$INPUT_DIR/SRR1166443.fastq \
+$OUTPUT_DIR/SRR1166443_trimmed.fastq \
+HEADCROP:4 \
+CROP:38 \
+LEADING:5 \
+TRAILING:5 \
+SLIDINGWINDOW:4:20 \
+MINLEN:25
+
+echo "SRR1166443 complete."
+
+
+###############################################
+# SRR1166444
+###############################################
+echo "Trimming SRR1166444..."
+trimmomatic SE -phred33 \
+$INPUT_DIR/SRR1166444.fastq \
+$OUTPUT_DIR/SRR1166444_trimmed.fastq \
+HEADCROP:4 \
+LEADING:3 \
+TRAILING:3 \
+SLIDINGWINDOW:4:20 \
+MINLEN:30
+
+echo "SRR1166444 complete"
+
+
+###############################################
+# FASTQC
+###############################################
+echo "All trimming complete! Running FastQC on trimmed reads..."
+fastqc $OUTPUT_DIR/*_trimmed.fastq -o $FASTQC_POST -t 3
+
+echo "=========================================="
+echo "Trimming Summary:"
+echo "SRR1166442: Trimmed first 4bp, kept bp 5-35 (~31bp reads)"
+echo "SRR1166443: Trimmed first 4bp, kept bp 5-35 (~31bp reads)"
+echo "SRR1166444: Trimmed first 4bp, light quality filtering (~46bp reads)"
+echo "=========================================="
+echo "Check FastQC results in: $FASTQC_POST"
+```
+
+-   SRR1166445: Keep only location: 4-35
+
+```{bash}
+#!/bin/bash
+
+module load trimmomatic
+module load fastqc
+
+# Set directories
+INPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose
+OUTPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/trimmed_changed_results_2
+FASTQC_POST=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/fastqc_post_changed_2
+
+mkdir -p "$OUTPUT_DIR"
+mkdir -p "$FASTQC_POST"
+
+echo "Starting trimming for all samples"
+
+###############################################
+# SRR1166445
+###############################################
+echo "Trimming SRR1166445..."
+trimmomatic SE -phred33 \
+$INPUT_DIR/SRR1166445.fastq \
+$OUTPUT_DIR/SRR1166445_trimmed.fastq \
+HEADCROP:4 \
+CROP:31 \
+LEADING:5 \
+TRAILING:5 \
+SLIDINGWINDOW:4:20 \
+MINLEN:25
+
+echo "SRR1166445 complete."
+
+
+###############################################
+# SRR1166446
+###############################################
+echo "Trimming SRR1166446..."
+trimmomatic SE -phred33 \
+$INPUT_DIR/SRR1166446.fastq \
+$OUTPUT_DIR/SRR1166446_trimmed.fastq \
+HEADCROP:4 \
+CROP:35 \
+LEADING:5 \
+TRAILING:5 \
+SLIDINGWINDOW:4:20 \
+MINLEN:25
+
+echo "SRR1166446 complete."
+
+
+###############################################
+# SRR1166447
+###############################################
+echo "Trimming SRR1166447..."
+trimmomatic SE -phred33 \
+$INPUT_DIR/SRR1166447.fastq \
+$OUTPUT_DIR/SRR1166447_trimmed.fastq \
+HEADCROP:4 \
+LEADING:3 \
+TRAILING:3 \
+SLIDINGWINDOW:4:20 \
+MINLEN:30
+
+echo "SRR1166447 complete"
+
+
+###############################################
+# FASTQC
+###############################################
+echo "All trimming complete! Running FastQC on trimmed reads..."
+fastqc $OUTPUT_DIR/*_trimmed.fastq -o $FASTQC_POST -t 3
+
+echo "=========================================="
+echo "Trimming Summary:"
+echo "SRR1166445: Trimmed first 4bp, kept bp 5-35 (~31bp reads)"
+echo "SRR1166446: Trimmed first 4bp, kept bp 5-35 (~31bp reads)"
+echo "SRR1166447: Trimmed first 4bp, light quality filtering (~46bp reads)"
+echo "=========================================="
+echo "Check FastQC results in: $FASTQC_POST"
+```
+
+------------------------------------------------------------------------
+
+## Read Alignment
+
+### Align Reads to Reference
+
+First, we need to build a Bowtie2 index for the reference genome, because Bowtie2 does not align reads directly to a raw FASTA file.
+
+```{bash}
+bowtie2-build combined_reference.fsa combined_reference.index 
+```
+
+This creates six files: combine_index.1.bt2, combine_index.2.bt2, combine_index.3.bt2, combine_index.4.bt2, combine_index.rev.1.bt2, combine_index.rev.2.bt2
+
+Then, we align multiple trimmed FASTQ files to the reference genome, converting the results into compressed and indexed BAM files:
+
+```{bash}
+#!/bin/bash
+
+#-----------------------------
+# Modules
+#-----------------------------
+module load bowtie2
+module load samtools
+
+#-----------------------------
+# Paths
+#-----------------------------
+INDEX=/scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/combined_index
+INPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Glucose/trimmed_changed_results_2
+OUTPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Glucose/alignment_results
+
+#-----------------------------
+# Threads (default to 4 if not set by SLURM)
+#-----------------------------
+THREADS=${SLURM_CPUS_PER_TASK:-4}
+
+#-----------------------------
+# Create output directory
+#-----------------------------
+mkdir -p "$OUTPUT_DIR"
+
+#-----------------------------
+# Change to input directory
+#-----------------------------
+cd "$INPUT_DIR" || { echo "ERROR: Cannot change to input directory $INPUT_DIR"; exit 1; }
+
+#-----------------------------
+# Loop through FASTQ files
+#-----------------------------
+for file in *_trimmed.fastq; do
+    BASENAME=$(basename "$file" _trimmed.fastq)
+    
+    echo "-----------------------------------"
+    echo "Aligning $file ..."
+    
+    SAM="$OUTPUT_DIR/${BASENAME}.sam"
+    BAM="$OUTPUT_DIR/${BASENAME}.bam"
+    SORTED="$OUTPUT_DIR/${BASENAME}_sorted.bam"
+
+    # Bowtie2 alignment
+    if bowtie2 -p $THREADS -x $INDEX -U "$file" -S "$SAM"; then
+        echo "Bowtie2 alignment finished for $file"
+
+        # Convert SAM -> BAM
+        samtools view -@ $THREADS -bS "$SAM" > "$BAM"
+
+        # Sort BAM
+        samtools sort -@ $THREADS "$BAM" -o "$SORTED"
+
+        # Index BAM
+        samtools index "$SORTED"
+
+        # Remove SAM to save space
+        rm "$SAM"
+
+        echo "Done → $SORTED"
+    else
+        echo "ERROR: Bowtie2 failed for $file. Skipping this sample."
+    fi
+done
+
+```
+
+### Check Alignment Statistics
+
+```{bash}
+#view results
+samtools view -h SRR1166442.bam |head -n20
+
+#Results overview (flagstat)
+samtools flagstat SRR1166442_sorted.bam
+
+#Gives total mapped reads for each sample
+samtools idxstats SRR1166445_sorted.bam | awk '{sum+=$3} END {print "Total mapped:", sum}'
+
+# Count reads at each mapping quality
+samtools view SRR1166445_sorted.bam | \
+  awk '{print $5}' | \
+  sort -n | \
+  uniq -c | \
+  sort -rn
+
+# Output format: count quality_score
+
+```
+
+Glucose results:
+
+Results for **SRR1166442:**
+
+**Total Reads**
+
+-   37,214,642 reads processed
+
+-   All passed QC (0 failed)
+
+**Mapping Rate** = 97.48%
+
+-   36,275,744 reads mapped successfully
+
+-   938,898 reads unmapped (2.52%)
+
+**Sequencing Type** = single-end RNA-seq
+
+**No Duplicates Detected**
+
+-   This is because duplicate marking wasn't performed
+
+-   Not critical for RNA-seq
+
+**No Secondary/Supplementary Alignments:**
+
+-   Each read mapped to only one location (or didn't map)
+
+```{bash}
+37214642 + 0 in total (QC-passed reads + QC-failed reads) #all passed QC 
+37214642 + 0 primary 
+0 + 0 secondary 
+0 + 0 supplementary #each read only mapped to one location (or did not map) 
+0 + 0 duplicates #no duplicates (duplicate marking was not performed) 
+0 + 0 primary duplicates 
+36275744 + 0 mapped (97.48% : N/A) #36275744 successfully mapped
+36275744 + 0 primary mapped (97.48% : N/A) 
+0 + 0 paired in sequencing #single-end RNA-seq 
+0 + 0 read1 
+0 + 0 read2 
+0 + 0 properly paired (N/A : N/A) 
+0 + 0 with itself and mate mapped 
+0 + 0 singletons (N/A : N/A)
+0 + 0 with mate mapped to a different chr 
+0 + 0 with mate mapped to a different chr (mapQ>=5)
+```
+
+Results for **SRR1166443**:
+
+```{bash}
+41168645 + 0 in total (QC-passed reads + QC-failed reads) #all passed QC
+41168645 + 0 primary
+0 + 0 secondary
+0 + 0 supplementary
+0 + 0 duplicates
+0 + 0 primary duplicates
+40250654 + 0 mapped (97.77% : N/A) #40250654 successfully mapped
+40250654 + 0 primary mapped (97.77%: N/A)
+0 + 0 paired in sequencing
+0 + 0 read1
+0 + 0 read2
+0 + 0 properly paired (N/A : N/A)
+0 + 0 with itself and mate mapped
+0 + 0 singletons (N/A : N/A)
+0 + 0 with mate mapped to a different chr
+0 + 0 with mate mapped to a different chr (mapQ>=5)
+```
+
+Results for **SRR1166444:**
+
+```{bash}
+32619263 + 0 in total (QC-passed reads + QC-failed reads)
+32619263 + 0 primary
+0 + 0 secondary
+0 + 0 supplementary
+0 + 0 duplicates
+0 + 0 primary duplicates
+31801525 + 0 mapped (97.49%: N/A)
+31801525 + 0 primary mapped (97.49%: N/A)
+0 + 0 paired in sequencing
+0 + 0 read1
+0 + 0 read2
+0 + 0 properly paired (N/A : N/A)
+0 + 0 with itself and mate mapped
+0 + 0 singletons (N/A : N/A)
+0 + 0 with mate mapped to a different chr
+0 + 0 with mate mapped to a different chr (mapQ>=5)
+
+```
+
+Cellobiose reads:
+
+Results for **SRR1166445:**
+
+```{bash}
+41501841 + 0 in total (QC-passed reads + QC-failed reads)
+41501841 + 0 primary
+0 + 0 secondary
+0 + 0 supplementary
+0 + 0 duplicates
+0 + 0 primary duplicates
+40036266 + 0 mapped (96.47%: N/A)
+40036266 + 0 primary mapped (96.47%: N/A)
+0 + 0 paired in sequencing
+0 + 0 read1
+0 + 0 read2
+0 + 0 properly paired (N/A : N/A)
+0 + 0 with itself and mate mapped
+0 + 0 singletons (N/A : N/A)
+0 + 0 with mate mapped to a different chr
+0 + 0 with mate mapped to a different chr (mapQ>=5)
+```
+
+Results for **SRR1166446:**
+
+```{bash}
+34815097 + 0 in total (QC-passed reads + QC-failed reads)
+34815097 + 0 primary
+0 + 0 secondary
+0 + 0 supplementary
+0 + 0 duplicates
+0 + 0 primary duplicates
+33855054 + 0 mapped (97.24%: N/A)
+33855054 + 0 primary mapped (97.24%: N/A)
+0 + 0 paired in sequencing
+0 + 0 read1
+0 + 0 read2
+0 + 0 properly paired (N/A : N/A)
+0 + 0 with itself and mate mapped
+0 + 0 singletons (N/A : N/A)
+0 + 0 with mate mapped to a different chr
+0 + 0 with mate mapped to a different chr (mapQ>=5)
+```
+
+Results for **SRR1166447:**
+
+```{bash}
+32270905 + 0 in total (QC-passed reads + QC-failed reads)
+32270905 + 0 primary
+0 + 0 secondary
+0 + 0 supplementary
+0 + 0 duplicates
+0 + 0 primary duplicates
+31253210 + 0 mapped (96.85%: N/A)
+31253210 + 0 primary mapped (96.85%: N/A)
+0 + 0 paired in sequencing
+0 + 0 read1
+0 + 0 read2
+0 + 0 properly paired (N/A : N/A)
+0 + 0 with itself and mate mapped
+0 + 0 singletons (N/A : N/A)
+0 + 0 with mate mapped to a different chr
+0 + 0 with mate mapped to a different chr (mapQ>=5)
+```
+
+Alignment result:
+
+**Cellobiose (30293057):**
+
+\> SRR1166445: 41501841 reads; 41501841 (100.00%) were unpaired; 1465575 (3.53%) aligned 0 times; 34261349 (82.55%) aligned exactly 1 time; 5774917 (13.91%) aligned \>1 times; 96.47% overall alignment rate
+
+\> SRR1166446: 34815097 reads; 34815097 (100.00%) were unpaired; 960043 (2.76%) aligned 0 times; 29003438 (83.31%) aligned exactly 1 time; 4851616 (13.94%) aligned \>1 times; 97.24% overall alignment rate
+
+\> SRR1166447: 32270905 reads; 32270905 (100.00%) were unpaired; 1017695 (3.15%) aligned 0 times; 26554903 (82.29%) aligned exactly 1 time; 4698307 (14.56%) aligned \>1 times; 96.85% overall alignment rate
+
+**Glucose (30293923):**
+
+\> SRR1166442: 37214642 reads; 37214642 (100.00%) were unpaired; 938898 (2.52%) aligned 0 times; 31273215 (84.03%) aligned exactly 1 time; 5002529 (13.44%) aligned \>1 times; 97.48% overall alignment rate
+
+\>SRR1166443: 41168645 reads; 41168645 (100.00%) were unpaired; 917991 (2.23%) aligned 0 times; 34622989 (84.10%) aligned exactly 1 time; 5627665 (13.67%) aligned \>1 times; 97.77% overall alignment rate
+
+\>SRR1166444: 32619263 reads; 32619263 (100.00%) were unpaired; 817738 (2.51%) aligned 0 times; 27135903 (83.19%) aligned exactly 1 time; 4665622 (14.30%) aligned \>1 times; 97.49% overall alignment rate
+
+```         
+```
+
+## Quantify Gene Expression
+
+RPKM = (Number of reads mapped to gene × 10⁹) / (Total mapped reads × Gene length in bp)
+
+### Count Reads Per Gene and Normalise
+
+```{bash}
+#Using HTSeq
+#!/bin/bash
+
+#-----module need-----
+#load HTSeq on HPC
+module load py-htseq/0.11.2-gcc-13.2.0-python-3.11.6  
+
+#-----Direction-----
+INPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/alignment_results
+OUTPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/Quantify_Gene_Expression
+Annotation_DIR=/scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference
+mkdir -p  "$OUTPUT_DIR"
+
+echo "Starting to count the reads per gene"
+
+#-----SRR1166445-----
+echo "Counting SRR1166445"
+htseq-count -f bam -r pos --idattr=Parent $INPUT_DIR/SRR1166445_sorted.bam $Annotation_DIR/combined_reference_annotation.gff > SRR1166445_counts_1.txt 
+#idattr=Parent to make the parent column the ID 
+echo "SRR1166445 complete"
+
+#-----SRR1166446-----
+echo "Counting SRR1166446"
+htseq-count -f bam -r pos --idattr=Parent $INPUT_DIR/SRR1166446_sorted.bam $Annotation_DIR/combined_reference_annotation.gff>
+#idattr=Parent to make the parent column the ID 
+echo "SRR1166446 complete"
+
+#-----SRR1166447-----
+echo "Counting SRR1166447"
+htseq-count -f bam -r pos --idattr=Parent $INPUT_DIR/SRR1166447_sorted.bam $Annotation_DIR/combined_reference_annotation.gff>
+#idattr=Parent to make the parent column the ID 
+echo "SRR1166447 complete"
+```
+
+At first time to run the code, got error: Error occurred when processing GFF file (line 10142 of file /scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/combined_reference_annotation.gff): unmatched quote \[Exception type: ValueError, raised in \_HTSeq.pyx:1597\];
+
+That is because in the annotation file, I got an unexpected ‘“‘. Need to remove it !!
+
+```{bash}
+# First check what it looks like in the 1042 line.
+nano +10142 combined_reference_annotation.gff 
+# See there a unpaired quotation marks, then remove it 
+sed '10142s/"//g' combined_reference_annotation.gff > cleaned.gff
+# Right now, check that there are no more unpaired quotation marks 
+nano +10142 clean.gff
+```
+
+Then run the script above again, error occurs: Error: Starting to count the read per gene Counting SRR1166445 Error occured when processing GFF file (line 16321 of file /scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/cleaned.gff): Feature GH1-1 does not contain a 'Parent' attribute \[Exception type: ValueError, raised in count.py:76\] SRR1166445 complete In this case, this is due to there has no parent info for the insertion genome therefore cannot run it. Then change to run by ID.
+
+```{bash}
+#Using HTSeq
+#!/bin/bash
+
+#-----module need-----
+#load HTSeq on HPC
+module load py-htseq/0.11.2-gcc-13.2.0-python-3.11.6  
+
+#-----Direction-----
+INPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/alignment_results
+OUTPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/Quantify_Gene_Expression
+Annotation_DIR=/scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference
+mkdir -p  "$OUTPUT_DIR"
+
+echo "Starting to count the reads per gene"
+
+#-----SRR1166445-----
+echo "Counting SRR1166445"
+htseq-count -f bam -r pos --idattr=ID $INPUT_DIR/SRR1166445_sorted.bam $Annotation_DIR/combined_reference_annotation.gff > SRR1166445_counts_1.txt 
+#idattr=Parent to make the parent column the ID 
+echo "SRR1166445 complete"
+
+#-----SRR1166446-----
+echo "Counting SRR1166446"
+htseq-count -f bam -r pos --idattr=ID $INPUT_DIR/SRR1166446_sorted.bam $Annotation_DIR/combined_reference_annotation.gff>
+#idattr=Parent to make the parent column the ID 
+echo "SRR1166446 complete"
+
+#-----SRR1166447-----
+echo "Counting SRR1166447"
+htseq-count -f bam -r pos --idattr=ID $INPUT_DIR/SRR1166447_sorted.bam $Annotation_DIR/combined_reference_annotation.gff>
+#idattr=Parent to make the parent column the ID 
+echo "SRR1166447 complete"
+```
+
+Error occurred again: Error occurred when processing GFF file (line 13170 of file /scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/cleaned.gff): Feature snR48_BY4742 does not contain a 'ID' attribute \[Exception type: ValueError, raised in count.py:76\]
+
+This is because the ID is not in some of the lines. Changed the name, also got the same error. Therefore, we realised that some are missing from the insert genome, and others from the reference genome. There are two options: either fill in the ID or name, or count separately and add the results to avoid editing the GFF for thousands of features and the “missing attribute” problem, since each GFF uses the attribute it actually has.
+
+We decided to run the Count Reads Per Gene separately, so we ran them with the reference genome. This works because HTSeq-count counts reads per feature in a GFF file.
+
+Think of --idattr as choosing a column name for counting: Reference GFF → Parent column Insert GFF → gene_id column HTSeq reads only that column. When merging, you treat them all as “gene IDs” — it doesn’t matter which column was used in the original GFF.
+
+```{bash}
+#!/bin/bash 
+
+#-----load module-----
+module load py-htseq/0.11.2-gcc-13.2.0-python-3.11.6  
+module load python/3.11.6 
+
+#-----directories-----
+INPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/alignment_results
+OUTPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/Quantify_Gene_Expression
+REF_GFF=/scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/no_fasta_ref.gff
+INSERT_GFF=/scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/transgenes_clean.gff
+
+mkdir -p "$OUTPUT_DIR"
+
+echo "Starting HTSeq-count for all samples"
+
+#-----SRR1166445-----
+echo "Counting SRR1166445 for reference genome"
+htseq-count -f bam -r pos --idattr=Parent \
+    "$INPUT_DIR/SRR1166445_sorted.bam" \
+    "$REF_GFF" \
+    > "$OUTPUT_DIR/SRR1166445_ref_counts.txt"
+echo "SRR1166445 reference genome complete"
+
+echo "Counting SRR1166445 for insert genome"
+htseq-count -f bam -r pos --idattr=gene_id \
+    "$INPUT_DIR/SRR1166445_sorted.bam" \
+    "$INSERT_GFF" \
+    > "$OUTPUT_DIR/SRR1166445_insert_counts.txt"
+echo "SRR1166445 insert genome complete"
+
+#-----SRR1166446-----
+echo "Counting SRR1166446 for reference genome..."
+htseq-count -f bam -r pos --idattr=Parent \
+    "$INPUT_DIR/SRR1166446_sorted.bam" \
+    "$REF_GFF" \
+    > "$OUTPUT_DIR/SRR1166446_ref_counts.txt"
+echo "SRR1166446 reference genome complete"
+
+echo "Counting SRR1166446 for insert genome..."
+htseq-count -f bam -r pos --idattr=gene_id \
+    "$INPUT_DIR/SRR1166446_sorted.bam" \
+    "$INSERT_GFF" \
+    > "$OUTPUT_DIR/SRR1166446_insert_counts.txt"
+echo "SRR1166446 insert genome complete"
+
+#-----SRR1166447-----
+echo "Counting SRR1166447 for reference genome..."
+htseq-count -f bam -r pos --idattr=Parent \
+    "$INPUT_DIR/SRR1166447_sorted.bam" \
+    "$REF_GFF" \
+    > "$OUTPUT_DIR/SRR1166447_ref_counts.txt"
+echo "SRR1166447 reference genome complete"
+
+echo "Counting SRR1166447 for insert genome..."
+htseq-count -f bam -r pos --idattr=gene_id \
+    "$INPUT_DIR/SRR1166447_sorted.bam" \
+    "$INSERT_GFF" \
+    > "$OUTPUT_DIR/SRR1166447_insert_counts.txt"
+echo "SRR1166447 insert genome complete"
+
+echo "All HTSeq-count jobs finished!"
+```
+
+This code ran without errors. But when we normalised the HTSeq results, the output from this script couldn't be used because a gene length file wasn't provided. Therefore, we re-wrote the script to run the HTSeq and normalisation together.
+
+This counts reads per gene using HTSeq and then normalises the counts to CPM and RPKM. At first, we extract gene lengths from the annotation files (reference and inserts), then we count reads per gene using HTSeq-count. After that, we normalised the counts to CPM and RPKM.
+
+```{bash}
+#!/bin/bash
+#SBATCH --job-name=htseq_rpkm
+#SBATCH --output=htseq_rpkm.out
+#SBATCH --error=htseq_rpkm.err
+#SBATCH --time=04:00:00
+#SBATCH --mem=16G
+
+# ----- Load modules -----
+module load py-htseq/0.11.2-gcc-13.2.0-python-3.11.6
+module load py-pandas/1.5.3-gcc-13.2.0-python-3.11.6
+
+# ----- Directories -----
+INPUT_DIR=/scratch/users/k25127820/Group8_ABCC/Glucose/alignment_results
+OUTPUT_DIR=/scratch/users/k25127820/Group8_ABCC/Glucose/Quantify_Gene_Expression
+mkdir -p "$OUTPUT_DIR"
+
+REF_GFF=/scratch/users/k25127820/Group8_ABCC/reference_genome/combined_reference/no_fasta_ref.gff
+INSERT_GFF=/scratch/users/k25127820/Group8_ABCC/reference_genome/combined_reference/transgenes.gff
+
+# ----- Gene lengths CSV -----
+GENE_LENGTHS="$OUTPUT_DIR/gene_lengths.csv"
+
+# ----- Extract gene lengths from GFF -----
+echo "Extracting gene lengths from GFF files..."
+python3 - <<EOF
+import pandas as pd
+
+# Bash variables
+GENE_LENGTHS = "$GENE_LENGTHS"
+REF_GFF = "$REF_GFF"
+INSERT_GFF = "$INSERT_GFF"
+
+def gff_to_lengths(gff_file, id_attr):
+    lengths = []
+    with open(gff_file) as f:
+        for line in f:
+            if line.startswith("#"):
+                continue
+            parts = line.strip().split("\t")
+            if len(parts) < 9:
+                continue
+            start = int(parts[3])
+            end = int(parts[4])
+            info = parts[8]
+            gene_id = None
+            for field in info.split(";"):
+                if field.startswith(f"{id_attr}="):
+                    gene_id = field.split("=")[1]
+                    break
+            if gene_id:
+                lengths.append((gene_id, end - start + 1))
+    return pd.DataFrame(lengths, columns=["gene_id", "length_bp"])
+
+ref_lengths = gff_to_lengths(REF_GFF, "Parent")
+insert_lengths = gff_to_lengths(INSERT_GFF, "gene_id")
+
+all_lengths = pd.concat([ref_lengths, insert_lengths])
+all_lengths = all_lengths.groupby("gene_id", as_index=False).sum()
+all_lengths.to_csv(GENE_LENGTHS, index=False)
+print(f"Gene lengths saved to {GENE_LENGTHS}")
+EOF
+
+# ----- HTSeq-count for all samples (reference and insert separately) -----
+SAMPLES=(SRR1166442 SRR1166443 SRR1166444)
+GENOMES=("ref" "insert")
+
+for SAMPLE in "${SAMPLES[@]}"; do
+    for GENOME in "${GENOMES[@]}"; do
+        if [ "$GENOME" == "ref" ]; then
+            GFF="$REF_GFF"
+            IDATTR="Parent"
+        else
+            GFF="$INSERT_GFF"
+            IDATTR="gene_id"
+        fi
+
+        echo "Counting $SAMPLE for $GENOME genome..."
+        htseq-count -f bam -r pos --idattr="$IDATTR" \
+            "$INPUT_DIR/${SAMPLE}_sorted.bam" \
+            "$GFF" \
+            > "$OUTPUT_DIR/${SAMPLE}_${GENOME}_counts.txt"
+        
+        # Check if output file has content
+        if [ ! -s "$OUTPUT_DIR/${SAMPLE}_${GENOME}_counts.txt" ]; then
+            echo "WARNING: Empty output for ${SAMPLE}_${GENOME}"
+        fi
+    done
+done
+
+echo "HTSeq-count completed for all samples and genomes."
+
+# ----- Normalize CPM + RPKM separately -----
+echo "Starting normalization..."
+python3 - <<EOF
+import pandas as pd
+import os
+
+OUTPUT_DIR = "$OUTPUT_DIR"
+GENE_LENGTHS = "$GENE_LENGTHS"
+
+# FIXED: Use the same sample IDs as in HTSeq-count
+samples = ["SRR1166442", "SRR1166443", "SRR1166444"]
+genomes = ["ref", "insert"]
+
+# Read gene lengths
+lengths_df = pd.read_csv(GENE_LENGTHS)
+lengths_df = lengths_df.set_index("gene_id")
+
+for s in samples:
+    for g in genomes:
+        file_path = os.path.join(OUTPUT_DIR, f"{s}_{g}_counts.txt")
+        
+        # Check if file exists and has content
+        if not os.path.exists(file_path):
+            print(f"ERROR: File not found: {file_path}")
+            continue
+        
+        if os.path.getsize(file_path) == 0:
+            print(f"ERROR: Empty file: {file_path}")
+            continue
+        
+        # Read counts
+        df = pd.read_csv(file_path, sep="\t", header=None)
+        df.columns = ["gene", "count"]
+        df = df.set_index("gene")
+        
+        # Remove HTSeq special rows
+        special_rows = ["__no_feature", "__ambiguous", "__too_low_aQual", "__not_aligned", "__alignment_not_unique"]
+        df = df.drop(special_rows, errors='ignore')
+        
+        # Calculate CPM
+        total_reads = df["count"].sum()
+        cpm = df["count"] / total_reads * 1e6
+        
+        # Calculate RPKM (only for genes with known lengths)
+        matched = df.index.intersection(lengths_df.index)
+        rpkm = pd.Series(index=df.index, dtype=float)
+        if len(matched) > 0:
+            rpkm.loc[matched] = (df.loc[matched, "count"] * 1e9) / (total_reads * lengths_df.loc[matched, "length_bp"])
+        
+        # Create output dataframe
+        df_out = pd.DataFrame({
+            "count": df["count"], 
+            "CPM": cpm, 
+            "RPKM": rpkm
+        })
+        
+        output_file = os.path.join(OUTPUT_DIR, f"{s}_{g}_normalized.csv")
+        df_out.to_csv(output_file)
+        print(f"Saved: {output_file}")
+
+print("CPM and RPKM normalization complete for reference and insert genomes separately.")
+EOF
+
+echo "Pipeline finished successfully!"
+```
+
+### 
+
+When processing the data visualisation, the output of the above script did not include 'TDH3, FBA1, CCW12', which are shown in the paper's graph. Also, the normalised CSV files contain only 411 genes, whereas they’re supposed to contain more than 6000, so our plots wouldn’t match what's in the paper. Need to double-check the annotation file and the normalised CSV files.
+
+```{bash}
+#Check of the normalised CSV files
+wc -l SRR116644*
+# Check specific gene in files
+grep 'TDH3' SRR116644*
+```
+
+-   Cellobiose: 7 SRR1166445_insert_counts.txt 416 SRR1166445_ref_counts.txt 7 SRR1166446_insert_counts.txt 416 SRR1166446_ref_counts.txt 7 SRR1166447_insert_counts.txt 416 SRR1166447_ref_counts.txt 1269 total
+
+-   Glucose: 3 SRR1166442_insert_normalized.csv 412 SRR1166442_ref_normalized.csv 3 SRR1166443_insert_normalized.csv 412 SRR1166443_ref_normalized.csv 3 SRR1166444_insert_normalized.csv 412 SRR1166444_ref_normalized.csv 1245 total
+
+-   The specific genes do not occur in files. Therefore, we checked the annotation files.
+
+```{bash}
+grep 'TDH3' no_fasta_ref.gff
+```
+
+The specific genes are shown in the annotation files. Then we went through the scripts we have from the fastqc to the normalisation. The issue is that in HTSeq, we used 'parent' or 'gene_id' for the '--idattr=' option. 'Parent' refers to the transcripts or exons, and 'gene_id' refers to genes.\
+The use of 'Parent' will lose many genes, as it only counts reads against transcript/exon parents. Therefore, we need to use 'gene' for '--idattr'. By doing this, we can combine the insertion and reference annotation files. In the insertion file, the 'gene_id' needs to be replaced with 'ID=', and 'gene_name' needs to be replaced with 'gene=' to fit the reference annotation file.
+
+```{bash}
+# Change the gene_id and gene_name in insertion annotation file
+sed -E -e 's/gene_id/ID=/' -e 's/gene_name/gene=/' transgenes.gff > transgenes_final.gff 
+# Combine the insertion annotation file and reference annotation file
+cat no_fasta_ref.gff transgenes_final.gff > combined.gff 
+```
+
+After changing the annotation
+
+```{bash}
+#!/bin/bash
+#SBATCH --job-name=htseq_gene
+#SBATCH --output=htseq_gene.out
+#SBATCH --error=htseq_gene.err
+#SBATCH --time=04:00:00
+#SBATCH --mem=16G
+
+# -----------------------------
+# Load modules
+# -----------------------------
+module load py-htseq/0.11.2-gcc-13.2.0-python-3.11.6
+module load py-pandas/1.5.3-gcc-13.2.0-python-3.11.6
+
+# -----------------------------
+# Paths
+# -----------------------------
+INPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/alignment_results
+OUTPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/Quantify_Gene_Expression_changed
+mkdir -p "$OUTPUT_DIR"
+
+COMBINED_GFF=/scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/combined.gff
+GENE_LENGTHS="$OUTPUT_DIR/gene_lengths.csv"
+
+# -----------------------------
+# Extract gene lengths from GFF
+# -----------------------------
+python3 - <<EOF
+import pandas as pd
+
+COMBINED_GFF = "$COMBINED_GFF"
+GENE_LENGTHS = "$GENE_LENGTHS"
+
+lengths = []
+with open(COMBINED_GFF) as f:
+    for line in f:
+        if line.startswith("#"):
+            continue
+        parts = line.strip().split("\t")
+        if len(parts) < 9:
+            continue
+        if parts[2] != "gene":
+            continue
+        start, end = int(parts[3]), int(parts[4])
+        info = parts[8]
+        gene_id = None
+        for field in info.split(";"):
+            if field.startswith("gene="):
+                gene_id = field.split("=")[1]
+                break
+        if gene_id:
+            lengths.append((gene_id, end-start+1))
+
+df = pd.DataFrame(lengths, columns=["gene_id", "length_bp"])
+df.to_csv(GENE_LENGTHS, index=False)
+print(f"Gene lengths saved to {GENE_LENGTHS}")
+EOF
+
+# -----------------------------
+# HTSeq-count
+# -----------------------------
+SAMPLES=(SRR1166445 SRR1166446 SRR1166447)
+
+for SAMPLE in "${SAMPLES[@]}"; do
+    echo "Counting $SAMPLE ..."
+    htseq-count -f bam -r pos -s no -t gene --idattr=gene \
+        "$INPUT_DIR/${SAMPLE}_sorted.bam" \
+        "$COMBINED_GFF" \
+        > "$OUTPUT_DIR/${SAMPLE}_counts.txt"
+done
+
+# -----------------------------
+# Normalize CPM and RPKM
+# -----------------------------
+python3 - <<EOF
+import pandas as pd
+import os
+
+OUTPUT_DIR = "$OUTPUT_DIR"
+GENE_LENGTHS = "$GENE_LENGTHS"
+samples = ["SRR1166445", "SRR1166446", "SRR1166447"]
+
+lengths_df = pd.read_csv(GENE_LENGTHS, index_col=0)
+
+for s in samples:
+    file_path = os.path.join(OUTPUT_DIR, f"{s}_counts.txt")
+    df = pd.read_csv(file_path, sep="\t", header=None, names=["gene","count"], index_col=0)
+    
+    # Total reads for CPM
+    total_reads = df["count"].sum()
+    cpm = df["count"] / total_reads * 1e6
+    
+    # RPKM
+    matched_genes = df.index.intersection(lengths_df.index)
+    rpkm = (df.loc[matched_genes,"count"] * 1e9) / (total_reads * lengths_df.loc[matched_genes,"length_bp"])
+    
+    # Combine results
+    df_out = pd.DataFrame({"count": df["count"], "CPM": cpm})
+    df_out.loc[matched_genes,"RPKM"] = rpkm
+    df_out.to_csv(os.path.join(OUTPUT_DIR, f"{s}_normalized.csv"))
+
+print("CPM and RPKM calculation complete for all samples.")
+EOF
+
+echo "Pipeline finished successfully!"
+```
+
+When running this script, an error appears in the reference annotation file: one row does not contain the 'gene='. In that row, the gene name is not written as gene=, it is written as 'Name='. Therefore, we need to change it.
+
+```{bash}
+# Change the 'Name=' to 'gene='
+sed -E 's/;Name=([^;]+)/;gene=\1/' no_fasta_ref.gff > no_fasta_ref_change.gff
+# Double check the row is changed right now
+grep 'YAL018C_BY4742' no_fasta_ref_change.gff 
+# Combine two files again
+cat no_fasta_ref_change.gff transgenes_final.gff > combined.gff 
+```
+
+Then we ran the script above again and checked the normalisation files. This is a bash script that extracts gene lengths from a GFF file and saves them into a CSV using Python. We asked to open the GFF file and read it line by line, skip when we met comments (#), lines with fewer than nine columns, features that are not gene.
+
+```{bash}
+# Check the specific gene in the files
+grep 'TDH3' SRR116644*
+grep 'FBA1' SRR116644*
+grep 'CCW12' SRR116644*
+# Check the number of genes in the files
+wc -l SRR116644* 
+# Glucose: every sequence has 6606 lines
+# Cellobiose: every sequence has 6606 lines
+```
+
+After this script, we found out that we only have the cpm, not the RPKM. Therefore, we broke down the script part by part to double-check the problem. For extracting the gene length from the annotation file, before we used gene_id to label the row data, and then we used gene in the '--idattr' function. To make sure this is not the issue, changed to use the gene length. First, we calculated the gene length from the annotation file. Then, it extracted all gene features, calculated the length of each gene in base pairs, and saved the output as a CSV file. With columns: gene and length_bp.
+
+```{bash}
+#!/bin/bash
+
+#-----load modules-----
+module load py-htseq/0.11.2-gcc-13.2.0-python-3.11.6
+module load py-pandas/1.5.3-gcc-13.2.0-python-3.11.6
+
+#-----paths-----
+GFF=/scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/combined.gff
+GENE_LEN=/scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/gene_lengths.csv
+
+#-----Extract gene length from GFF-----
+python3 - <<EOF
+import pandas as pd
+
+gff = "$GFF"
+out = "$GENE_LEN"
+
+records = []
+
+with open(gff) as f:
+    for line in f:
+        if line.startswith("#"):
+            continue
+        cols = line.strip().split("\t")
+        if len(cols) < 9:
+            continue
+        if cols[2] != "gene":
+            continue
+
+        start, end = int(cols[3]), int(cols[4])
+        attrs = dict(
+            field.split("=", 1)
+            for field in cols[8].split(";")
+            if "=" in field
+        )
+
+        # MATCH htseq --idattr=gene
+        if "gene" in attrs:
+            gene = attrs["gene"]
+            records.append((gene, end - start + 1))
+
+df = pd.DataFrame(records, columns=["gene", "length_bp"])
+df = df.drop_duplicates(subset="gene").set_index("gene")
+df.to_csv(out)
+
+print(f"Gene lengths saved to {out}")
+EOF
+```
+
+Then, we ran the HTSeq to count the alignment results and normalisation. In this script, we did not calculate the cpm as before; we only calculated the RPKM.
+
+```{bash}
+#!/bin/bash
+#SBATCH --job-name=htseq_rpkm
+#SBATCH --output=htseq_rpkm.out
+#SBATCH --error=htseq_rpkm.err
+#SBATCH --time=04:00:00
+#SBATCH --mem=16G
+
+#-----load modules-----
+module load py-htseq/0.11.2-gcc-13.2.0-python-3.11.6
+module load py-pandas/1.5.3-gcc-13.2.0-python-3.11.6
+
+#-----paths-----
+INPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/alignment_results
+OUTPUT_DIR=/scratch/grp/msc_appbio/Group8_ABCC/Cellobiose/HTSeq_results
+mkdir -p "$OUTPUT_DIR"
+
+COMBINED_GFF=/scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/combined.gff
+GENE_LENGTHS=/scratch/grp/msc_appbio/Group8_ABCC/reference_genome/combined_reference/gene_lengths.csv
+
+#-----HTSeq-count-----
+SAMPLES=(SRR1166445 SRR1166446 SRR1166447)
+
+for SAMPLE in "${SAMPLES[@]}"; do
+    echo "Counting $SAMPLE ..."
+    htseq-count -f bam -r pos -s no -t gene --idattr=gene \
+        "$INPUT_DIR/${SAMPLE}_sorted.bam" \
+        "$COMBINED_GFF" \
+        > "$OUTPUT_DIR/${SAMPLE}_counts.txt"
+done
+
+#-----Normalize RPKM------
+python3 - <<EOF
+import pandas as pd
+import os
+
+OUTPUT_DIR = "$OUTPUT_DIR"
+GENE_LENGTHS = "$GENE_LENGTHS"
+samples = ["SRR1166445", "SRR1166446", "SRR1166447"]
+
+# Read gene lengths
+lengths_df = pd.read_csv(GENE_LENGTHS, index_col=0)
+
+for s in samples:
+    file_path = os.path.join(OUTPUT_DIR, f"{s}_counts.txt")
+    
+    # Read HTSeq counts
+    df = pd.read_csv(file_path, sep="\t", header=None, names=["gene","count"], index_col=0)
+    
+    # Total reads
+    total_reads = df["count"].sum()
+    
+    # Initialise output DataFrame with counts
+    df_out = pd.DataFrame({"count": df["count"]})
+    
+    # Calculate RPKM for genes that have length information
+    matched_genes = df.index.intersection(lengths_df.index)
+    df_out["RPKM"] = pd.NA
+    if not matched_genes.empty:
+        rpkm = (df.loc[matched_genes, "count"] * 1e9) / (total_reads * lengths_df.loc[matched_genes, "length_bp"])
+        df_out.loc[matched_genes, "RPKM"] = rpkm
+
+    # Save output
+    df_out.to_csv(os.path.join(OUTPUT_DIR, f"{s}_normalized.csv"))
+
+EOF
+
+echo "Pipeline finished successfully!"
+```
+
+Then we downloaded the output from the HTSeq script and went to RStudio to combine the files into one. In this script: 1. Reads all normalised HTSeq files for Glucose and Cellobiose. 2. Removes HTSeq summary rows (\_\_\*). 3. Extracts RPKM values. 4. Combines them into one table with proper column names. 5. Calculates mean RPKM per condition. 6. Saves the final combined dataset for downstream analysis.
+
+```{r}
+getwd()
+dir_g <- "./Glucose/HTSeq_results/"
+# List normalized files
+g_files <- list.files(path=dir_g,pattern = "_normalized.csv")
+test<-read.csv("Glucose/HTSeq_results/SRR1166442_normalized.csv", header=FALSE)
+test<-test[-1,]
+sum <- grepl("^__",test[,1])
+test_c <-test[!sum, ]
+gene<-test_c[,1]
+test<-test[,2]
+
+g_files <- list.files(path="./Glucose/HTSeq_results/", pattern="*_normalized.csv", full.names = TRUE, recursive=FALSE)
+the_files_g <- data.frame(gene=gene, stringsAsFactors = TRUE)
+
+for (i in g_files){
+  the_file_g <- as.data.frame(read.csv(i, header = F, stringsAsFactors = F))
+  the_file_g <- the_file_g[-1,] #remove the column name
+  sum_rows<-grepl("^__",the_file_g[,1])#Remove the HTSeq summary rows
+  the_file_g <- the_file_g[!sum_rows, ]
+  rpkm <- the_file_g[,3] #extra the rpkm value 
+  sample_name <- sub("_normalized.csv", "", basename(i))
+  the_files_g[[sample_name]] <- rpkm
+}
+dir_c <- "./Cellobiose/HTSeq_results/"
+c_files <-list.files(path = dir_c, pattern = "*_normalized.csv", full.names = TRUE, recursive = FALSE)
+the_files_c <- data.frame(gene=gene, stringsAsFactors = T)
+for (m in c_files){
+  the_file_c <- as.data.frame(read.csv(m, header = F, stringsAsFactors = F))
+  the_file_c <- the_file_c[-1,]
+  sum_rows_c <- grepl("^__", the_file_c[,1])
+  the_file_c <- the_file_c[!sum_rows_c, ]
+  rpkm_c <- the_file_c[,3]
+  sample_name_c <- sub("_normalized.csv", "",basename(m))
+  the_files_c[[sample_name_c]] <- rpkm_c
+}
+
+com_file_c <- the_files_c[,-1]
+all_file <- cbind(the_files_g,com_file_c)
+
+colnames(all_file) <- c("gene", "JCYL001B", "JCYL002B", "JCYL003B", "JCTL001D", "JCYL002D", "JCYL003D")
+
+write.csv(all_file, "Combined_RPKM.csv", row.names = FALSE)
+```
+
+Cause we also got an Excel file from the paper, it also has means for three Glucose samples and means for three Cellobiose samples.
+
+```{r}
+#Calculate means
+data <- read.csv("Combined_RPKM.csv", header = T)
+data$Mean_B <- rowMeans(data[,c("JCYL001B", "JCYL002B", "JCYL003B")], na.rm = T)
+data$Mean_D <- rowMeans(data[, c("JCTL001D", "JCYL002D", "JCYL003D")], na.rm = T)
+colnames(data)
+data <- data[, c("gene", "JCYL001B", "JCYL002B", "JCYL003B", "Mean_B", 
+                 "JCTL001D", "JCYL002D", "JCYL003D", "Mean_D")]
+print(data)
+write.csv(data, "combined_with_means.csv", row.names = FALSE)
+```
+
+To run the statistical part at the end of the paper, we need to restructure the file. The script takes your wide-format RPKM data, reshapes it into a long/tidy format, extracts experimental metadata (strain, replicate, condition), converts relevant columns to factors, and saves it as a new CSV for ANOVA analysis.
+
+```{r}
+getwd()
+library(tidyr)
+library(dplyr)
+library(broom)
+library(multcomp)
+library(ggplot2)
+
+data <- read.csv("./Combined_RPKM.csv",header=T, stringsAsFactors = F)
+colnames(data)
+df_test <- data[data$gene == "AAC1", , drop = FALSE]
+test_long <- df_test %>%
+  pivot_longer(
+    cols = -gene,
+    names_to = "Sample",
+    values_to = "Value"
+  )
+
+# Reshape all genes 
+long_data <- data %>%
+  pivot_longer(
+  cols = -gene,
+  names_to = "Sample",
+  values_to = "Value"
+)
+
+# Parse metadata from sample names
+long_data <- long_data %>%
+  mutate(
+    Strain    = substr(Sample, 1, 4),  # JCYL / JCTL
+    Replicate = substr(Sample, 5, 7),  # 001 / 002 / 003
+    Condition = substr(Sample, 8, 8)   # B / D
+  )
+
+# Convert to factors
+long_data <- long_data %>%
+  mutate(
+    gene = factor(gene),
+    Strain = factor(Strain),
+    Replicate = factor(Replicate),
+    Condition = factor(Condition)
+  )
+
+write.csv(long_data, "Doc_for_ANOVA.csv", row.names = F)
+```
+
+Then we can run the ANOVA test and Tukey test. The script automates gene-wise ANOVA analyses, calculates descriptive stats, runs post-hoc Tukey tests, and produces comprehensive summary tables for all genes.
+
+```{r}
+library(tidyverse)
+
+#-----Read data-----
+data <- read.csv("Doc_for_ANOVA.csv", header = T)
+
+#-----Convert to factors-----
+data$Condition <- factor(data$Condition)
+data$gene <- factor(data$gene)
+
+#-----perform ANOVA for all genes-----
+genes <- unique(data$gene)
+
+all_anova_results <- data.frame()
+all_descriptive_stats <- data.frame()
+all_tukey_results <- data.frame()
+summary_results <- data.frame()
+
+# Loop through each gene
+for (gene in genes) {
+  
+  cat("Analyzing gene:", as.character(gene), "\n")
+  
+  # Subset data for this gene
+  gene_data <- data %>% filter(gene == !!gene)
+  
+  # Check if there are at least 2 conditions
+  unique_conditions <- unique(gene_data$Condition)
+  if (length(unique_conditions) < 2) {
+    cat("  Skipped - only one condition present\n")
+    next
+  }
+  
+  # Remove any NA or empty conditions
+  gene_data <- gene_data %>% filter(!is.na(Condition) & Condition != "")
+  
+  # Re-level the factor to remove unused levels
+  gene_data$Condition <- droplevels(gene_data$Condition)
+  
+  # Check again after cleaning
+  if (length(levels(gene_data$Condition)) < 2) {
+    cat("  Skipped - insufficient conditions after cleaning\n")
+    next
+  }
+  
+  # ---- Descriptive Statistics ----
+  stats <- gene_data %>%
+    group_by(Condition) %>%
+    summarise(
+      Mean = mean(Value),
+      SD = sd(Value),
+      SEM = sd(Value) / sqrt(n()),
+      n = n(),
+      .groups = "drop"
+    )
+  stats$Gene <- as.character(gene)
+  all_descriptive_stats <- rbind(all_descriptive_stats, stats)
+  
+  # ---- ANOVA ----
+  anova_model <- tryCatch({
+    aov(Value ~ Condition, data = gene_data)
+  }, error = function(e) {
+    cat("  Error in ANOVA:", e$message, "\n")
+    return(NULL)
+  })
+  
+  if (is.null(anova_model)) {
+    next
+  }
+  
+  anova_summary <- summary(anova_model)
+  anova_table <- anova_summary[[1]]
+  
+  # Extract ANOVA results
+  p_value <- anova_table[1, 5]
+  f_stat <- anova_table[1, 4]
+  
+  if (is.na(p_value) || is.na(f_stat)) {
+    cat("  Skipped - ANOVA could not be calculated\n")
+    next
+  }
+  
+  # Store ANOVA table
+  anova_df <- data.frame(
+    Gene = as.character(gene),
+    Source = c("Between_Groups", "Within_Groups"),
+    Df = anova_table[, 1],
+    Sum_Sq = anova_table[, 2],
+    Mean_Sq = anova_table[, 3],
+    F_value = c(f_stat, NA),
+    P_value = c(p_value, NA)
+  )
+  all_anova_results <- rbind(all_anova_results, anova_df)
+  
+  # ---- Tukey's HSD ----
+  tukey_result <- tryCatch({
+    TukeyHSD(anova_model, conf.level = 0.95)
+  }, error = function(e) {
+    return(NULL)
+  })
+  
+  if (!is.null(tukey_result)) {
+    tukey_df <- as.data.frame(tukey_result$Condition)
+    tukey_df$Gene <- as.character(gene)
+    tukey_df$Comparison <- rownames(tukey_df)
+    rownames(tukey_df) <- NULL
+    all_tukey_results <- rbind(all_tukey_results, tukey_df)
+  }
+  
+  # ---- Summary ----
+  # Determine significance
+  if (p_value < 0.001) {
+    sig <- "***"
+  } else if (p_value < 0.01) {
+    sig <- "**"
+  } else if (p_value < 0.05) {
+    sig <- "*"
+  } else {
+    sig <- "ns"
+  }
+  
+  # Create summary row
+  summary_row <- data.frame(Gene = as.character(gene))
+  
+  # Add means and SDs for each condition
+  for (cond in unique(gene_data$Condition)) {
+    cond_stats <- stats[stats$Condition == cond, ]
+    summary_row[[paste0("Mean_", cond)]] <- cond_stats$Mean
+    summary_row[[paste0("SD_", cond)]] <- cond_stats$SD
+  }
+  
+  summary_row$F_statistic <- f_stat
+  summary_row$P_value <- p_value
+  summary_row$Significance <- sig
+  
+  summary_results <- rbind(summary_results, summary_row)
+  
+  cat("  F =", round(f_stat, 2), ", P =", format(p_value, scientific = FALSE, digits = 4), sig, "\n")
+}
+
+# ============================================
+# DISPLAY RESULTS
+# ============================================
+
+cat("\n==================================================\n")
+cat("ANOVA SUMMARY\n")
+cat("==================================================\n")
+print(summary_results, row.names = FALSE)
+
+cat("\n==================================================\n")
+cat("DESCRIPTIVE STATISTICS\n")
+cat("==================================================\n")
+print(all_descriptive_stats, row.names = FALSE)
+
+# ============================================
+# SAVE RESULTS
+# ============================================
+
+write.csv(all_anova_results, "ANOVA_Complete_Table.csv", row.names = FALSE)
+write.csv(all_descriptive_stats, "ANOVA_Descriptive_Stats.csv", row.names = FALSE)
+write.csv(all_tukey_results, "ANOVA_Tukey_Results.csv", row.names = FALSE)
+write.csv(summary_results, "ANOVA_Summary.csv", row.names = FALSE)
+
+cat("\n==================================================\n")
+cat("ANOVA Analysis Complete!\n")
+cat("==================================================\n")
+cat("Files saved:\n")
+cat("  1. ANOVA_Complete_Table.csv - Full ANOVA tables\n")
+cat("  2. ANOVA_Descriptive_Stats.csv - Means, SD, SEM\n")
+cat("  3. ANOVA_Tukey_Results.csv - Tukey's HSD results\n")
+cat("  4. ANOVA_Summary.csv - Summary with significance\n")
+cat("==================================================\n")
+```
+
+## Prepare data for plotting
+
+### List normalised files
+
+Normalised RNA-seq expression files for glucose and cellobiose conditions were identified using filename pattern matching to enable reproducible downstream analysis of multiple biological replicates.
+
+```{r}
+#Normalised files
+glucose_norm <- list.files(
+  glucose_dir,
+  pattern = "_normalized.csv",
+  full.names = TRUE
+)
+
+glucose_norm
+
+cello_norm <- list.files(
+  cello_dir,
+  pattern = "_normalized.csv",
+  full.names = TRUE
+)
+
+cello_norm
+```
+
+### Merge RPKM values
+
+Normalised RPKM values were extracted from individual RNA-seq replicate files and reformatted into a consistent structure to enable replicate-wise merging and comparative analysis across growth conditions.
+
+```{r}
+library(dplyr)
+
+load_rpkm <- function(file, sample_name) {
+  df <- read.csv(file)
+  gene_col <- colnames(df)[1]
+  
+  df %>%
+    dplyr::select(all_of(gene_col), RPKM) %>%
+    dplyr::rename(gene = all_of(gene_col)) %>%
+    dplyr::rename(!!sample_name := RPKM)
+}
+
+#RPKM expression values for Glucose-grown replicates
+g1 <- load_rpkm(glucose_norm[1], "Glucose_1")
+g2 <- load_rpkm(glucose_norm[2], "Glucose_2")
+g3 <- load_rpkm(glucose_norm[3], "Glucose_3")
+
+#RPKM expression values for Cellobiose-grown replicates
+c1 <- load_rpkm(cello_norm[1], "Cellobiose_1")
+c2 <- load_rpkm(cello_norm[2], "Cellobiose_2")
+c3 <- load_rpkm(cello_norm[3], "Cellobiose_3")
+
+```
+
+### Create the RPKM matrix
+
+Combines RNA-seq RPKM values from all Glucose and Cellobiose biological replicates into a single gene-by-sample expression matrix using gene identifiers as the join key. Each gene is represented once, with separate columns for each replicate, and gene IDs are stored as row names to match standard expression matrix formats. The resulting matrix provides the structured input required for downstream analyses.
+
+```{r}
+# Construct an RPKM expression matrix by joining multiple samples
+
+rpkm_matrix <- g1 %>% 
+  # Start with g1 as the base data frame
+  
+  left_join(g2, by = "gene") %>% 
+  # Join g2 to g1 using the 'gene' column
+  # Keeps all genes from g1 and adds matching values from g2
+  
+  left_join(g3, by = "gene") %>% 
+  # Join g3 by gene, adding another sample's RPKM values
+  
+  left_join(c1, by = "gene") %>% 
+  # Join c1 by gene
+  
+  left_join(c2, by = "gene") %>% 
+  # Join c2 by gene
+  
+  left_join(c3, by = "gene")
+  # Join c3 by gene
+  # Result: wide data frame with one row per gene and one column per sample
+
+# Set row names to gene identifiers
+rownames(rpkm_matrix) <- rpkm_matrix$gene
+
+# Remove the 'gene' column now that it is stored as row names
+rpkm_matrix <- rpkm_matrix[, -1]
+
+```
+
+## Recreating Fig. S7A
+
+Boxplots of log₂-transformed normalised RPKM values are produced for each RNA-seq replicate under glucose and cellobiose conditions. The plots serve as a quality-control step, allowing assessment of replicate consistency, successful normalisation, and the absence of major technical biases. Comparable expression distributions across samples indicate that downstream condition-specific differences are likely to reflect biological variation rather than sequencing artefacts.
+
+```{r}
+#Recreate Fig. S7A - Boxplot
+# Rename columns to short sample identifiers
+# G = glucose replicates, C = cellobiose replicates
+colnames(rpkm_matrix) <- c(
+  "G1", "G2", "G3",
+  "C1", "C2", "C3"
+)
+
+# Create boxplots of log2-transformed RPKM values
+boxplot(
+  log2(rpkm_matrix + 1),     # Log2 transform RPKM values (pseudo-count avoids log(0))
+  outline = FALSE,           # Do not plot outliers
+  col = "white",             # White fill for all boxes
+  border = c(
+    rep("red", 3),           # Red borders for glucose samples
+    rep("blue", 3)           # Blue borders for cellobiose samples
+  ),
+  lwd = 1.5,                 # Line width of box outlines
+  medlwd = 2,                # Line width of median lines
+  boxwex = 0.6,              # Width of the boxes
+  ylab = "log2(normalised RPKM)",  # Y-axis label
+  xaxt = "n"                 # Suppress default x-axis (custom axis added below)
+)
+
+# Add a custom x-axis with sample labels
+axis(
+  1,                          # Draw axis on the bottom (x-axis)
+  at = seq_len(ncol(rpkm_matrix)), # Position labels at each box
+  labels = colnames(rpkm_matrix),  # Use sample names as labels
+  las = 2,                    # Rotate labels for readability
+  cex.axis = 0.8              # Scale axis label text size
+)
+
+# Draw a box around the plot (left and bottom only)
+box(bty = "l")
+
+```
+
+## Recreating Fig. S7B
+
+```{r}
+#Recreate Fig. S7B - Dendogram + Heatmap
+library(pheatmap)
+
+# 1) Convert to numeric matrix
+rpkm <- as.matrix(rpkm_matrix)
+storage.mode(rpkm) <- "numeric"
+
+# 2) Log2-transform
+log_rpkm <- log2(rpkm + 1)
+
+# 3) Remove genes with non-finite values or zero variance
+log_rpkm <- log_rpkm[
+  apply(log_rpkm, 1, function(x) all(is.finite(x))) &
+  apply(log_rpkm, 1, sd) > 0,
+]
+
+# 4) Gene-wise scaling (z-score per gene)
+log_rpkm_scaled <- t(scale(t(log_rpkm)))
+
+# 5) Final safety filter
+log_rpkm_scaled <- log_rpkm_scaled[
+  apply(log_rpkm_scaled, 1, function(x) all(is.finite(x))),
+]
+
+# 6) Hierarchical clustering of samples (Pearson correlation distance)
+sample_dist <- as.dist(1 - cor(log_rpkm_scaled, method = "pearson"))
+hc_samples <- hclust(sample_dist, method = "complete")
+
+# 7) Heatmap with sample clustering
+pheatmap(
+  log_rpkm_scaled,
+  cluster_rows = TRUE,
+  cluster_cols = hc_samples,
+  show_rownames = FALSE,
+  treeheight_row = 0,
+  border_color = NA,
+  color = colorRampPalette(c("blue", "grey90", "yellow"))(100)
+)
+
+```
+
+## Recreating Fig. S7C
+
+Volcano plots summarises genome-wide differential gene expression between two experimental conditions. Each point in the plot represents a single gene, positioned according to both the magnitude of expression change and the statistical confidence in that change. The x-axis displays the log2 fold change in expression between cellobiose- and glucose-grown cells, providing a measure of effect size, while the y-axis shows the −log10 of the false discovery rate (FDR)–adjusted p-value, reflecting statistical significance after correction for multiple testing. Genes located far from the origin and high on the y-axis therefore represent transcripts that are both strongly and reliably differentially expressed.
+
+In this analysis, raw read counts generated by HTSeq were analysed using DESeq2, which models RNA-seq count data using a negative binomial generalised linear model. This approach explicitly accounts for sequencing depth, biological variability between replicates, and the mean–variance relationship inherent to count data. Significance testing is performed using a Wald test, and p-values are adjusted using the Benjamini–Hochberg method to control the false discovery rate. Genes with an absolute log2 fold change of at least 1 (corresponding to a ≥2-fold change) and an adjusted p-value ≤ 0.001 were considered significantly differentially expressed and are highlighted in red.
+
+The original study generated a similar volcano plot using Baggerly’s test applied to RPKM-normalised expression values, with the x-axis reported as “weighted proportions”. While this differs from the log2 fold change metric used here, both approaches aim to quantify relative changes in gene expression between conditions. Differences in the specific genes identified as significant are expected, as DESeq2 uses a count-based statistical framework that more rigorously models biological variance and is now considered best practice for RNA-seq analysis. Importantly, despite methodological differences, the overall structure of the volcano plot is conserved, revealing widespread transcriptional reprogramming in response to carbon source. Biologically, the presence of large numbers of both up- and down-regulated genes reflects coordinated changes in metabolic, regulatory, and stress-response pathways as yeast adapts from glucose to cellobiose metabolism, indicating a global reorganisation of gene expression rather than isolated gene-specific effects.
+
+```{r}
+# Recreate Fig. S7C – Volcano plot
+# This script performs differential expression analysis using DESeq2
+# and visualises the results as a volcano plot.
+
+# 1. Load the DESeq2 library
+# DESeq2 provides methods for modelling RNA-seq count data using
+# negative binomial distributions and performing differential expression analysis
+library(DESeq2)
+
+# 2. Read raw HTSeq count files
+# Each file contains gene identifiers in column 1 and raw read counts in column 2
+# These are biological replicates for glucose (G) and cellobiose (C) conditions
+g1 <- read.table("SRR1166442_counts.txt", header = FALSE)
+g2 <- read.table("SRR1166443_counts.txt", header = FALSE)
+g3 <- read.table("SRR1166444_counts.txt", header = FALSE)
+
+c1 <- read.table("SRR1166445_counts.txt", header = FALSE)
+c2 <- read.table("SRR1166446_counts.txt", header = FALSE)
+c3 <- read.table("SRR1166447_counts.txt", header = FALSE)
+
+# 3. Combine individual count vectors into a single count matrix
+# Rows correspond to genes, columns correspond to samples
+# This matrix is the primary input required by DESeq2
+counts <- cbind(
+  G1 = g1[,2],
+  G2 = g2[,2],
+  G3 = g3[,2],
+  C1 = c1[,2],
+  C2 = c2[,2],
+  C3 = c3[,2]
+)
+
+# Assign gene names as row names of the count matrix
+rownames(counts) <- g1[,1]
+
+# 4. Define the experimental design
+# This factor indicates which condition each column (sample) belongs to
+condition <- factor(c("Glucose","Glucose","Glucose",
+                      "Cellobiose","Cellobiose","Cellobiose"))
+
+# Create a metadata (colData) data frame required by DESeq2
+colData <- data.frame(condition)
+
+# 5. Create the DESeq2 dataset object
+# This object stores count data, sample metadata, and the experimental design
+dds <- DESeqDataSetFromMatrix(
+  countData = counts,
+  colData = colData,
+  design = ~ condition
+)
+
+# Optional but recommended: remove genes with very low total counts
+# Low-count genes provide little statistical power and can introduce noise
+dds <- dds[rowSums(counts(dds)) > 10, ]
+
+# 6. Run the DESeq2 differential expression pipeline
+# This step estimates size factors, dispersion, and fits the model
+dds <- DESeq(dds)
+
+# Extract differential expression results
+# The contrast specifies cellobiose relative to glucose
+res <- results(dds, contrast = c("condition", "Cellobiose", "Glucose"))
+
+# Prepare a data frame for volcano plotting
+# log2FoldChange represents effect size
+# padj represents FDR-adjusted statistical significance
+volcano <- data.frame(
+  gene = rownames(res),
+  log2FC = res$log2FoldChange,
+  padj = res$padj,
+  negLog10Padj = -log10(res$padj)
+)
+
+# Remove genes with missing adjusted p-values
+# These typically arise from very low or uninformative counts
+volcano <- volcano[!is.na(volcano$padj), ]
+
+# Define significantly differentially expressed genes
+# Thresholds match those used in the paper conceptually
+sig <- volcano$padj <= 0.001 & abs(volcano$log2FC) >= 1
+
+# Plot the volcano plot
+# All genes are plotted in black
+plot(volcano$log2FC,
+     volcano$negLog10Padj,
+     pch = 20,
+     col = "black",
+     xlab = "log2 Fold Change (Cellobiose vs Glucose)",
+     ylab = "-log10(FDR-adjusted p-value)",
+     main = "Differential expression (Fig. S7C)")
+
+# Overlay significantly differentially expressed genes in red
+# These genes show both large effect size and strong statistical support
+points(volcano$log2FC[sig],
+       volcano$negLog10Padj[sig],
+       pch = 20,
+       col = "red")
+
+```
+
+## Recreating Fig. 4A
+
+Mean mRNA expression levels of a selected set of genes between Glucose and Cellobiose conditions are compared in this figure. It extracts normalised RPKM values for target genes, groups samples by carbon source, calculates mean expression and standard deviation across biological replicates, and visualises the results as grouped bar plots with error bars.
+
+```{r}
+# Recreate Fig. 4A - Barplot
+# Target genes and sample groups
+genes_target <- c("CCW12", "CCW1", "TDH3", "FBA1", "PGK1")
+glucose_samples <- c("G1", "G2", "G3")
+cellobiose_samples <- c("C1", "C2", "C3")
+
+# Ensure numeric expression matrix
+rpkm <- as.matrix(rpkm_matrix)
+storage.mode(rpkm) <- "numeric"
+
+# Select appropriate CCW gene (paper uses CCW12)
+present <- genes_target[genes_target %in% rownames(rpkm)]
+if (length(present) == 0) {
+  stop("None of the target genes were found in the expression matrix.")
+}
+
+genes_use <- if ("CCW12" %in% present) {
+  c("CCW12", "TDH3", "FBA1", "PGK1")
+} else {
+  c("CCW1", "TDH3", "FBA1", "PGK1")
+}
+
+expr <- rpkm[genes_use, , drop = FALSE]
+
+# Compute mean and standard deviation across replicates
+mean_C <- rowMeans(expr[, cellobiose_samples, drop = FALSE], na.rm = TRUE)
+mean_G <- rowMeans(expr[, glucose_samples,   drop = FALSE], na.rm = TRUE)
+
+sd_C <- apply(expr[, cellobiose_samples, drop = FALSE], 1, sd, na.rm = TRUE)
+sd_G <- apply(expr[, glucose_samples,   drop = FALSE], 1, sd, na.rm = TRUE)
+
+means <- rbind(Cellobiose = mean_C, Glucose = mean_G)
+sds   <- rbind(Cellobiose = sd_C,   Glucose = sd_G)
+
+# Bar plot with error bars
+bp <- barplot(
+  means,
+  beside = TRUE,
+  col = c("grey80", "white"),
+  border = "black",
+  ylab = "mRNA expression levels (normalised RPKM)",
+  xlab = "Genes",
+  ylim = c(0, max(means + sds, na.rm = TRUE) * 1.2),
+  legend.text = c("Cellobiose", "Glucose"),
+  args.legend = list(x = "topright", bty = "n")
+)
+
+arrows(
+  x0 = bp,
+  y0 = means - sds,
+  y1 = means + sds,
+  angle = 90,
+  code = 3,
+  length = 0.05
+)
+
+```
